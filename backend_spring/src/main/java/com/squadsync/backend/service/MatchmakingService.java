@@ -3,7 +3,6 @@ package com.squadsync.backend.service;
 import com.squadsync.backend.dto.GameDto;
 import com.squadsync.backend.dto.GameSessionDto;
 import com.squadsync.backend.dto.GameSessionPlayerDto;
-import com.squadsync.backend.dto.UserDto;
 import com.squadsync.backend.model.*;
 import com.squadsync.backend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -269,11 +268,6 @@ public class MatchmakingService {
                 .collect(Collectors.toList());
     }
 
-    private boolean doSlotsOverlap(AvailabilitySlot slotA, AvailabilitySlot slotB) {
-        return slotA.getStartTime().isBefore(slotB.getEndTime()) &&
-                slotB.getStartTime().isBefore(slotA.getEndTime());
-    }
-
     private GameSession createSessionForSlot(TimeSlot timeSlot) {
         List<Game> games = gameRepository.findAll();
         if (games.isEmpty())
@@ -287,7 +281,6 @@ public class MatchmakingService {
 
         for (Game game : games) {
             int score = 0;
-            boolean anyPlayerVetoed = false;
             int playerCount = 0;
 
             for (AvailabilitySlot slot : slots) {
@@ -310,9 +303,7 @@ public class MatchmakingService {
                             .orElse(5);
                 }
 
-                if (weight == 0) {
-                    anyPlayerVetoed = true;
-                } else {
+                if (weight > 0) {
                     score += weight;
                     playerCount++;
                 }
@@ -324,7 +315,7 @@ public class MatchmakingService {
 
             score += playerCount * 2; // Participation bonus
 
-            gameScores.add(new GameScore(game, score, playerCount));
+            gameScores.add(new GameScore(game, score));
         }
 
         if (gameScores.isEmpty())
@@ -367,9 +358,10 @@ public class MatchmakingService {
         if (sessionStartTime.isBefore(LocalDateTime.now())) {
             sessionStartTime = LocalDateTime.now();
         }
-        session.setStartTime(sessionStartTime);
+        // Truncate to seconds for DB hygiene
+        session.setStartTime(sessionStartTime.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
 
-        session.setEndTime(timeSlot.endTime);
+        session.setEndTime(timeSlot.endTime.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         session.setEndTime(timeSlot.endTime);
         session.setSessionScore(bestGame.score);
         session.setSessionScore(bestGame.score);
@@ -398,8 +390,9 @@ public class MatchmakingService {
         GameSessionDto dto = new GameSessionDto();
         dto.setId(session.getId());
         dto.setGameId(session.getGame().getId());
-        dto.setStartTime(session.getStartTime());
-        dto.setEndTime(session.getEndTime());
+        // Convert Entity (LocalDateTime) to DTO (Instant) using UTC
+        dto.setStartTime(session.getStartTime().toInstant(java.time.ZoneOffset.UTC));
+        dto.setEndTime(session.getEndTime().toInstant(java.time.ZoneOffset.UTC));
         dto.setSessionScore(session.getSessionScore());
         dto.setCreatedAt(session.getCreatedAt());
 
@@ -452,12 +445,10 @@ public class MatchmakingService {
     private static class GameScore {
         Game game;
         int score;
-        int playerCount;
 
-        public GameScore(Game game, int score, int playerCount) {
+        public GameScore(Game game, int score) {
             this.game = game;
             this.score = score;
-            this.playerCount = playerCount;
         }
     }
 
@@ -486,7 +477,6 @@ public class MatchmakingService {
 
         if (removed) {
             log.info("Removed user {} from session {} due to availability deletion", userId, sessionId);
-
             // If session has too few players, we might want to delete it or let dynamic
             // status handle it
             // Dynamic status will mark it as PRELIMINARY if < min players.

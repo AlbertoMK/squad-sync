@@ -37,8 +37,11 @@ public class AvailabilityService {
         AvailabilitySlot slot = new AvailabilitySlot();
         slot.setUser(user);
         // Convert Instant (DTO) to LocalDateTime (Entity) using UTC
-        slot.setStartTime(LocalDateTime.ofInstant(dto.getStartTime(), ZoneOffset.UTC));
-        slot.setEndTime(LocalDateTime.ofInstant(dto.getEndTime(), ZoneOffset.UTC));
+        // Truncate to seconds to avoid precision issues
+        slot.setStartTime(LocalDateTime.ofInstant(dto.getStartTime().truncatedTo(java.time.temporal.ChronoUnit.SECONDS),
+                ZoneOffset.UTC));
+        slot.setEndTime(LocalDateTime.ofInstant(dto.getEndTime().truncatedTo(java.time.temporal.ChronoUnit.SECONDS),
+                ZoneOffset.UTC));
 
         if (dto.getGameId() != null) {
             Game game = gameRepository.findById(dto.getGameId())
