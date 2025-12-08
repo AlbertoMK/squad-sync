@@ -177,4 +177,71 @@ public class MatchmakingServiceTest {
         p.setWeight(weight);
         return p;
     }
+
+    @Test
+    public void testMaxSessionDurationConstraint() {
+        // Setup scenarios: User 1 (09:00 - 22:00) vs User 2 (09:00 - 14:00)
+        // Overlap: 5 hours (09:00 - 14:00)
+        // Constraint: Max session duration = 4 hours (240 mins)
+
+        LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+
+        // Define Users
+        User u1 = new User();
+        u1.setId("u1");
+        User u2 = new User();
+        u2.setId("u2");
+
+        // Define Game
+        Game game = new Game();
+        game.setId("g1");
+
+        List<AvailabilitySlot> slots = new ArrayList<>();
+
+        // User 1: 09:00 - 22:00 (13 hours)
+        AvailabilitySlot s1 = new AvailabilitySlot();
+        s1.setId("s1");
+        s1.setUser(u1);
+        s1.setStartTime(now);
+        s1.setEndTime(now.withHour(22));
+        s1.setPreferences(List.of(createPreference(s1, game, 10)));
+        slots.add(s1);
+
+        // User 2: 09:00 - 14:00 (5 hours)
+        AvailabilitySlot s2 = new AvailabilitySlot();
+        s2.setId("s2");
+        s2.setUser(u2);
+        s2.setStartTime(now);
+        s2.setEndTime(now.withHour(14));
+        s2.setPreferences(List.of(createPreference(s2, game, 10)));
+        slots.add(s2);
+
+        // Mocks setup
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(Collections.emptyList());
+        when(slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(slots);
+        when(slotRepository.findAllById(anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(0);
+            List<AvailabilitySlot> result = new ArrayList<>();
+            for (String id : ids) {
+                slots.stream().filter(s -> s.getId().equals(id)).findFirst().ifPresent(result::add);
+            }
+            return result;
+        });
+        when(gameRepository.findAll()).thenReturn(List.of(game));
+        when(preferenceRepository.findByUserIdIn(anyList())).thenReturn(Collections.emptyList());
+        when(sessionRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(gameSessionService.getSessionStatus(any())).thenReturn(GameSession.SessionStatus.PRELIMINARY);
+
+        // Run Matchmaking
+        var result = matchmakingService.runMatchmaking();
+
+        // Assertions
+        Assertions.assertFalse(result.isEmpty(), "Should create a session");
+        GameSessionDto session = result.get(0);
+        long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
+
+        Assertions.assertEquals(240, durationMinutes,
+                "Session duration should be capped at 4 hours (240 min) even if availability is 5 hours");
+    }
 }

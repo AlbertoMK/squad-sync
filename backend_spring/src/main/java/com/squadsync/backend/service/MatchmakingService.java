@@ -228,7 +228,22 @@ public class MatchmakingService {
             }
 
             if (activeSlotIds.size() >= MIN_PLAYERS_FOR_SESSION) {
-                candidateSlots.add(new TimeSlot(start, end, activeSlotIds, activeUserIds));
+                long durationMinutes = java.time.Duration.between(start, end).toMinutes();
+                if (durationMinutes > 240) {
+                    LocalDateTime chunkStart = start;
+                    while (chunkStart.isBefore(end)) {
+                        LocalDateTime chunkEnd = chunkStart.plusMinutes(240);
+                        if (chunkEnd.isAfter(end)) {
+                            chunkEnd = end;
+                        }
+                        if (!chunkStart.equals(chunkEnd)) {
+                            candidateSlots.add(new TimeSlot(chunkStart, chunkEnd, activeSlotIds, activeUserIds));
+                        }
+                        chunkStart = chunkEnd;
+                    }
+                } else {
+                    candidateSlots.add(new TimeSlot(start, end, activeSlotIds, activeUserIds));
+                }
             }
         }
 
