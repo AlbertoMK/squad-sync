@@ -397,9 +397,10 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                             {(() => {
                                 const start = new Date(session.startTime);
                                 const end = new Date(session.endTime);
-                                const diffMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-                                const hours = Math.floor(diffMinutes / 60);
-                                const minutes = Math.round(diffMinutes % 60);
+                                const diffMilliseconds = end.getTime() - start.getTime();
+                                const totalMinutes = Math.round(diffMilliseconds / (1000 * 60));
+                                const hours = Math.floor(totalMinutes / 60);
+                                const minutes = totalMinutes % 60;
                                 return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
                             })()}
                         </Badge>
