@@ -17,6 +17,7 @@ public class GameSessionController {
 
     private final GameSessionService gameSessionService;
     private final UserRepository userRepository;
+    private final com.squadsync.backend.service.MatchmakingService matchmakingService;
 
     @PostMapping("/{sessionId}/accept")
     public ResponseEntity<Void> acceptSession(
@@ -41,6 +42,9 @@ public class GameSessionController {
 
         String reason = body.getOrDefault("reason", "NOT_AVAILABLE");
         gameSessionService.rejectSession(sessionId, user.getId(), reason);
+
+        // Trigger matchmaking to recalculate sessions
+        matchmakingService.runMatchmaking();
 
         return ResponseEntity.ok().build();
     }

@@ -21,18 +21,31 @@ public class GameSessionService {
 
     private final GameSessionRepository sessionRepository;
     private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final com.squadsync.backend.repository.UserRepository userRepository;
 
     @Transactional
     public void acceptSession(String sessionId, String userId) {
         GameSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
-        GameSessionPlayer player = session.getPlayers().stream()
+        Optional<GameSessionPlayer> existingPlayer = session.getPlayers().stream()
                 .filter(p -> p.getUser().getId().equals(userId))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("User is not part of this session"));
+                .findFirst();
 
-        player.setStatus(GameSessionPlayer.SessionPlayerStatus.ACCEPTED);
+        if (existingPlayer.isPresent()) {
+            existingPlayer.get().setStatus(GameSessionPlayer.SessionPlayerStatus.ACCEPTED);
+        } else {
+            // User is joining the session (was not originally invited/matched)
+            com.squadsync.backend.model.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            GameSessionPlayer newPlayer = new GameSessionPlayer();
+            newPlayer.setSession(session);
+            newPlayer.setUser(user);
+            newPlayer.setStatus(GameSessionPlayer.SessionPlayerStatus.ACCEPTED);
+            session.getPlayers().add(newPlayer);
+        }
+
         sessionRepository.save(session);
     }
 

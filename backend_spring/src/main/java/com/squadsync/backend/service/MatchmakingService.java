@@ -101,23 +101,95 @@ public class MatchmakingService {
 
         log.info("Found {} viable time slots", viableSlots.size());
 
-        List<GameSession> sessions = new ArrayList<>();
+        List<GameSession> potentialSessions = new ArrayList<>();
         for (TimeSlot slot : viableSlots) {
             GameSession session = createSessionForSlot(slot);
             if (session != null) {
-                sessions.add(session);
+                potentialSessions.add(session);
             }
         }
 
-        log.info("Created {} game sessions", sessions.size());
+        log.info("Generated {} potential sessions", potentialSessions.size());
+
+        // Conflict Resolution: Sort sessions to prioritize the best ones
+        potentialSessions.sort((s1, s2) -> {
+            // 1. Player Count (Descending)
+            int p1 = s1.getPlayers().size();
+            int p2 = s2.getPlayers().size();
+            if (p1 != p2)
+                return Integer.compare(p2, p1);
+
+            // 2. Session Score (Descending)
+            if (s1.getSessionScore() != s2.getSessionScore())
+                return Double.compare(s2.getSessionScore(), s1.getSessionScore());
+
+            // 3. Duration (Descending) - Longer sessions preferred? Or maybe earlier start?
+            // Let's prefer longer sessions as they are harder to schedule
+            long d1 = java.time.Duration.between(s1.getStartTime(), s1.getEndTime()).toMinutes();
+            long d2 = java.time.Duration.between(s2.getStartTime(), s2.getEndTime()).toMinutes();
+            return Long.compare(d2, d1);
+        });
+
+        List<GameSession> selectedSessions = new ArrayList<>();
+
+        // We need to track which users are "booked" in the new preliminary sessions
+        // to prevent them from being in multiple overlapping preliminary sessions.
+        // Note: A user CAN be in multiple preliminary sessions if they don't overlap.
+        // But here we are iterating through sessions that might overlap in time.
+
+        // Actually, we need to check if the *sessions* overlap in time AND share users.
+        // Or simpler: If a session overlaps in time with an already selected session,
+        // AND they share at least one user, then they are incompatible for that user.
+        // But wait, a user can't be in two places at once.
+        // So if we select Session A (User 1, User 2) at 10:00-11:00.
+        // We cannot select Session B (User 2, User 3) at 10:30-11:30.
+
+        // Strategy: Keep a list of selected sessions. For each candidate, check if it
+        // conflicts
+        // with any already selected session.
+        // Conflict = Time Overlap AND Shared User.
+
+        for (GameSession candidate : potentialSessions) {
+            boolean conflicts = false;
+            for (GameSession selected : selectedSessions) {
+                if (sessionsOverlap(candidate, selected) && sharePlayers(candidate, selected)) {
+                    conflicts = true;
+                    break;
+                }
+            }
+
+            if (!conflicts) {
+                selectedSessions.add(candidate);
+            }
+        }
+
+        log.info("Selected {} non-conflicting sessions", selectedSessions.size());
+
+        // Save selected sessions
+        List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
 
         // Combine newly created sessions with existing confirmed sessions for the
         // return value
         List<GameSessionDto> result = new ArrayList<>();
         result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
-        result.addAll(sessions.stream().map(this::mapToDto).collect(Collectors.toList()));
+        result.addAll(savedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
 
         return result;
+    }
+
+    private boolean sessionsOverlap(GameSession s1, GameSession s2) {
+        return s1.getStartTime().isBefore(s2.getEndTime()) &&
+                s2.getStartTime().isBefore(s1.getEndTime());
+    }
+
+    private boolean sharePlayers(GameSession s1, GameSession s2) {
+        Set<String> p1Ids = s1.getPlayers().stream().map(p -> p.getUser().getId()).collect(Collectors.toSet());
+        for (GameSessionPlayer p2 : s2.getPlayers()) {
+            if (p1Ids.contains(p2.getUser().getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<TimeSlot> findOverlappingSlots(List<AvailabilitySlot> slots) {
@@ -164,7 +236,10 @@ public class MatchmakingService {
             }
 
             if (overlappingSlotIds.size() >= MIN_PLAYERS_FOR_SESSION && overlapStart.isBefore(overlapEnd)) {
-                overlaps.add(new TimeSlot(overlapStart, overlapEnd, new ArrayList<>(overlappingSlotIds)));
+                // Enforce minimum session duration of 1 hour (60 minutes)
+                if (java.time.Duration.between(overlapStart, overlapEnd).toMinutes() >= 60) {
+                    overlaps.add(new TimeSlot(overlapStart, overlapEnd, new ArrayList<>(overlappingSlotIds)));
+                }
             }
             processed.add(slotA.getId());
         }
@@ -286,7 +361,7 @@ public class MatchmakingService {
             session.getPlayers().add(player);
         }
 
-        return sessionRepository.save(session);
+        return session;
     }
 
     public List<GameSessionDto> getUpcomingSessions() {
