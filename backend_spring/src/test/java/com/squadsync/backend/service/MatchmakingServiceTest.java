@@ -100,8 +100,8 @@ public class MatchmakingServiceTest {
 
         // Assert
         Assertions.assertFalse(result.isEmpty(), "Should create at least one session");
-        Assertions.assertTrue(result.stream().anyMatch(s -> s.getPlayers().size() == 2),
-                "Should have a 2-player session");
+        Assertions.assertTrue(result.stream().anyMatch(s -> s.getPlayers().size() == 3),
+                "Should have a 3-player session");
     }
 
     @Test
@@ -243,5 +243,71 @@ public class MatchmakingServiceTest {
 
         Assertions.assertEquals(240, durationMinutes,
                 "Session duration should be capped at 4 hours (240 min) even if availability is 5 hours");
+    }
+
+    @Test
+    public void testSessionSplittingForLongAvailability() {
+        // Setup scenarios: User 1 & User 2 available 09:00 - 14:00 (5 hours)
+        // Expected: 2 sessions. One 4h (240m), One 1h (60m).
+
+        LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+
+        User u1 = new User();
+        u1.setId("u1");
+        User u2 = new User();
+        u2.setId("u2");
+        Game game = new Game();
+        game.setId("g1");
+
+        List<AvailabilitySlot> slots = new ArrayList<>();
+
+        // User 1: 09:00 - 14:00
+        AvailabilitySlot s1 = new AvailabilitySlot();
+        s1.setId("s1");
+        s1.setUser(u1);
+        s1.setStartTime(now);
+        s1.setEndTime(now.withHour(14));
+        s1.setPreferences(List.of(createPreference(s1, game, 10)));
+        slots.add(s1);
+
+        // User 2: 09:00 - 14:00
+        AvailabilitySlot s2 = new AvailabilitySlot();
+        s2.setId("s2");
+        s2.setUser(u2);
+        s2.setStartTime(now);
+        s2.setEndTime(now.withHour(14));
+        s2.setPreferences(List.of(createPreference(s2, game, 10)));
+        slots.add(s2);
+
+        // Mocks
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(Collections.emptyList());
+        when(slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(slots);
+        when(slotRepository.findAllById(anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(0);
+            List<AvailabilitySlot> result = new ArrayList<>();
+            for (String id : ids) {
+                slots.stream().filter(s -> s.getId().equals(id)).findFirst().ifPresent(result::add);
+            }
+            return result;
+        });
+        when(gameRepository.findAll()).thenReturn(List.of(game));
+        when(preferenceRepository.findByUserIdIn(anyList())).thenReturn(Collections.emptyList());
+        when(sessionRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(gameSessionService.getSessionStatus(any())).thenReturn(GameSession.SessionStatus.PRELIMINARY);
+
+        // Run
+        var result = matchmakingService.runMatchmaking();
+
+        // Assert
+        Assertions.assertEquals(2, result.size(), "Should create 2 sessions");
+
+        boolean has4HourSession = result.stream()
+                .anyMatch(s -> java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes() == 240);
+        boolean has1HourSession = result.stream()
+                .anyMatch(s -> java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes() == 60);
+
+        Assertions.assertTrue(has4HourSession, "Should have a 4h session");
+        Assertions.assertTrue(has1HourSession, "Should have a 1h session");
     }
 }

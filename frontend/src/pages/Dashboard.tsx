@@ -411,14 +411,26 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                         <Text size="sm">Score: {session.sessionScore}</Text>
                     </Group>
 
-                    <Group gap="xs">
-                        <IconUsers size={16} />
-                        <Text size="sm">
-                            {session.status === 'CONFIRMED'
-                                ? `${acceptedCount} confirmados`
-                                : `${session.players.length} invitados`}
-                        </Text>
-                    </Group>
+                    <Stack gap={0}>
+                        <Group gap="xs">
+                            <IconUsers size={16} />
+                            <Text size="sm">
+                                {session.status === 'CONFIRMED'
+                                    ? `${acceptedCount} confirmados`
+                                    : `${session.players.length} invitados`}
+                            </Text>
+                        </Group>
+                        <Stack gap={2} ml={26} mt={4}>
+                            {(session.status === 'CONFIRMED'
+                                ? session.players.filter(p => p.status === 'ACCEPTED')
+                                : session.players
+                            ).map((p) => (
+                                <Text key={p.userId} size="xs" c="dimmed">
+                                    {p.username}
+                                </Text>
+                            ))}
+                        </Stack>
+                    </Stack>
                 </div>
 
                 {!readOnly && (
