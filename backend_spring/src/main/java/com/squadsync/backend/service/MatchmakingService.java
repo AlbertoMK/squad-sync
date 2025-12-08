@@ -99,12 +99,21 @@ public class MatchmakingService {
                     existingSession.getPlayers().removeIf(p -> !newCandidateUserIds.contains(p.getUser().getId()));
 
                     // 2. Add players that are in candidate but not in existing
-                    Set<String> existingUserIds = existingSession.getPlayers().stream()
-                            .map(p -> p.getUser().getId())
-                            .collect(Collectors.toSet());
+                    // Create a map for faster lookup of existing players
+                    Map<String, GameSessionPlayer> existingPlayersMap = existingSession.getPlayers().stream()
+                            .collect(Collectors.toMap(p -> p.getUser().getId(), p -> p));
 
                     for (GameSessionPlayer candidatePlayer : candidateRequest.getPlayers()) {
-                        if (!existingUserIds.contains(candidatePlayer.getUser().getId())) {
+                        String userId = candidatePlayer.getUser().getId();
+                        if (existingPlayersMap.containsKey(userId)) {
+                            // Player exists. Check if we need to revive them (e.g. they declined before but
+                            // are
+                            // available now)
+                            GameSessionPlayer existingPlayer = existingPlayersMap.get(userId);
+                            if (existingPlayer.getStatus() == GameSessionPlayer.SessionPlayerStatus.REJECTED) {
+                                existingPlayer.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+                            }
+                        } else {
                             // This is a new player for this session
                             candidatePlayer.setSession(existingSession); // Repoint to existing session
                             existingSession.getPlayers().add(candidatePlayer);

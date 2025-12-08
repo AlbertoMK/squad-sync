@@ -15,9 +15,14 @@ import java.util.Collections;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 public class MatchmakingServiceTest {
     @Mock
     private AvailabilitySlotRepository slotRepository;
@@ -402,5 +407,108 @@ public class MatchmakingServiceTest {
 
         Assertions.assertEquals("ACCEPTED", u1Status, "User 1 should remain ACCEPTED if session is identical");
         Assertions.assertEquals("PENDING", u2Status, "User 2 should remain PENDING");
+    }
+
+    @Test
+    public void testSessionDeletionAfterAvailabilityRemoval() {
+        // Phase 1: Two users with overlapping availability
+        LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        LocalDateTime end = now.plusHours(2); // 120 minutes (valid duration)
+
+        User u1 = new User();
+        u1.setId("u1");
+        User u2 = new User();
+        u2.setId("u2");
+        Game game = new Game();
+        game.setId("g1");
+
+        // Slots
+        AvailabilitySlot s1 = new AvailabilitySlot();
+        s1.setId("s1");
+        s1.setUser(u1);
+        s1.setStartTime(now);
+        s1.setEndTime(end);
+        s1.setPreferences(List.of(createPreference(s1, game, 10)));
+
+        AvailabilitySlot s2 = new AvailabilitySlot();
+        s2.setId("s2");
+        s2.setUser(u2);
+        s2.setStartTime(now);
+        s2.setEndTime(end);
+        s2.setPreferences(List.of(createPreference(s2, game, 10)));
+
+        List<AvailabilitySlot> initialSlots = new ArrayList<>(List.of(s1, s2));
+
+        // Mocks for Phase 1
+        lenient().when(gameRepository.findAll()).thenReturn(List.of(game));
+        lenient().when(preferenceRepository.findByUserIdIn(anyList())).thenReturn(Collections.emptyList());
+        lenient().when(sessionRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        lenient().when(gameSessionService.getSessionStatus(any())).thenReturn(GameSession.SessionStatus.PRELIMINARY);
+
+        // Initial Run: No existing sessions, 2 slots
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(Collections.emptyList());
+        when(slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(initialSlots);
+        when(slotRepository.findAllById(anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(0);
+            List<AvailabilitySlot> result = new ArrayList<>();
+            for (String id : ids) {
+                if (id.equals("s1"))
+                    result.add(s1);
+                if (id.equals("s2"))
+                    result.add(s2);
+            }
+            return result;
+        });
+
+        // Run Phase 1
+        List<GameSessionDto> phase1Result = matchmakingService.runMatchmaking();
+        Assertions.assertEquals(1, phase1Result.size(), "Should create 1 session initially");
+        GameSessionDto createdSessionDto = phase1Result.get(0);
+
+        // Phase 2: User 1 removes availability
+        // Create an Entity representation of the DTO to return from the repo
+        GameSession distinctSession = new GameSession();
+        distinctSession.setId(createdSessionDto.getId() != null ? createdSessionDto.getId() : "generated-id");
+        distinctSession.setGame(game);
+        distinctSession.setStartTime(now);
+        distinctSession.setEndTime(end);
+        distinctSession.setSessionScore(createdSessionDto.getSessionScore());
+        // Set players
+        distinctSession.setPlayers(new ArrayList<>());
+        GameSessionPlayer p1 = new GameSessionPlayer();
+        p1.setUser(u1);
+        p1.setSession(distinctSession);
+        p1.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+        GameSessionPlayer p2 = new GameSessionPlayer();
+        p2.setUser(u2);
+        p2.setSession(distinctSession);
+        p2.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+        distinctSession.getPlayers().add(p1);
+        distinctSession.getPlayers().add(p2);
+
+        // Update Mocks
+        // Existing session IS returned now
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(List.of(distinctSession));
+
+        // Slots: Only s2 remains
+        List<AvailabilitySlot> phase2Slots = new ArrayList<>(List.of(s2));
+        when(slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(phase2Slots);
+        when(slotRepository.findAllById(anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(0);
+            List<AvailabilitySlot> result = new ArrayList<>();
+            for (String id : ids) {
+                // s1 is gone
+                if (id.equals("s2"))
+                    result.add(s2);
+            }
+            return result;
+        });
+
+        // Run Phase 2
+        List<GameSessionDto> phase2Result = matchmakingService.runMatchmaking();
+
+        // Assertions
+        Assertions.assertTrue(phase2Result.isEmpty(), "Should not return any sessions after availability removal");
     }
 }
