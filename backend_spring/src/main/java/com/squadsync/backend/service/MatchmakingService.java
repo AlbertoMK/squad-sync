@@ -174,6 +174,10 @@ public class MatchmakingService {
             }
         }
 
+        log.info("Preliminary: {}, Confirmed: {}, Potential: {}, Selected: {}, ToDelete: {}",
+                preliminarySessions.size(), confirmedSessions.size(), potentialSessions.size(), selectedSessions.size(),
+                sessionsToDelete.size());
+
         if (!sessionsToDelete.isEmpty()) {
             sessionRepository.deleteAll(sessionsToDelete);
             log.info("Deleted {} obsolete PRELIMINARY sessions", sessionsToDelete.size());
@@ -186,6 +190,9 @@ public class MatchmakingService {
         List<GameSessionDto> result = new ArrayList<>();
         result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
         result.addAll(savedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
+
+        log.info("Returning {} sessions ({} confirmed + {} saved)", result.size(), confirmedSessions.size(),
+                savedSessions.size());
 
         return result;
     }
