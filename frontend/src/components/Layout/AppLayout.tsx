@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { AppShell, Burger, Group, Title, Avatar, Menu, ActionIcon } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconLogout, IconUser, IconCalendar, IconDeviceGamepad2, IconHome } from '@tabler/icons-react';

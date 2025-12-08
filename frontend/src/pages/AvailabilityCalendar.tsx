@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Stack, Loader, Center } from '@mantine/core';
+import { Container, Title, Stack, Loader, Center, Modal, Button, Text, Group } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { notifications } from '@mantine/notifications';
 import { availabilityAPI } from '../lib/api';
+import './AvailabilityCalendar.css';
 
 const locales = {
     es: es,
@@ -32,6 +34,9 @@ export default function AvailabilityCalendar() {
     const [events, setEvents] = useState<AvailabilityEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState<CalendarView>('week');
+    const [date, setDate] = useState(new Date());
+    const [selectedEvent, setSelectedEvent] = useState<AvailabilityEvent | null>(null);
+    const [opened, { open, close }] = useDisclosure(false);
 
     const loadAvailability = async () => {
         try {
@@ -56,6 +61,18 @@ export default function AvailabilityCalendar() {
     }, []);
 
     const handleSelectSlot = async ({ start, end }: { start: Date; end: Date }) => {
+        // Prevent full day selection (often triggered from month view or day headers)
+        // If start and end are 00:00:00, it's likely a full day selection
+        if (start.getHours() === 0 && start.getMinutes() === 0 &&
+            end.getHours() === 0 && end.getMinutes() === 0) {
+            notifications.show({
+                title: 'Selección inválida',
+                message: 'Por favor, selecciona una franja horaria específica, no días completos.',
+                color: 'orange',
+            });
+            return;
+        }
+
         try {
             await availabilityAPI.create({
                 startTime: start.toISOString(),
@@ -76,24 +93,29 @@ export default function AvailabilityCalendar() {
         }
     };
 
-    const handleSelectEvent = async (event: AvailabilityEvent) => {
-        const confirmed = window.confirm('¿Quieres eliminar esta disponibilidad?');
-        if (confirmed) {
-            try {
-                await availabilityAPI.delete(event.id);
-                notifications.show({
-                    title: 'Disponibilidad eliminada',
-                    message: 'La franja horaria ha sido eliminada',
-                    color: 'blue',
-                });
-                await loadAvailability();
-            } catch (error: any) {
-                notifications.show({
-                    title: 'Error',
-                    message: error.response?.data?.error || 'Error al eliminar disponibilidad',
-                    color: 'red',
-                });
-            }
+    const handleSelectEvent = (event: AvailabilityEvent) => {
+        setSelectedEvent(event);
+        open();
+    };
+
+    const handleDeleteEvent = async () => {
+        if (!selectedEvent) return;
+
+        try {
+            await availabilityAPI.delete(selectedEvent.id);
+            notifications.show({
+                title: 'Disponibilidad eliminada',
+                message: 'La franja horaria ha sido eliminada',
+                color: 'blue',
+            });
+            close();
+            await loadAvailability();
+        } catch (error: any) {
+            notifications.show({
+                title: 'Error',
+                message: error.response?.data?.error || 'Error al eliminar disponibilidad',
+                color: 'red',
+            });
         }
     };
 
@@ -106,40 +128,66 @@ export default function AvailabilityCalendar() {
     }
 
     return (
-        <Container size="xl">
-            <Stack gap="lg">
-                <Title order={2}>Mi Disponibilidad</Title>
+        <>
+            <Container size="xl">
+                <Stack gap="lg">
+                    <Title order={2}>Mi Disponibilidad</Title>
 
-                <div style={{ height: '600px' }}>
-                    <Calendar
-                        localizer={localizer}
-                        events={events}
-                        startAccessor="start"
-                        endAccessor="end"
-                        style={{ height: '100%' }}
-                        selectable
-                        onSelectSlot={handleSelectSlot}
-                        onSelectEvent={handleSelectEvent}
-                        view={view}
-                        onView={setView}
-                        defaultView="week"
-                        culture="es"
-                        messages={{
-                            next: 'Siguiente',
-                            previous: 'Anterior',
-                            today: 'Hoy',
-                            month: 'Mes',
-                            week: 'Semana',
-                            day: 'Día',
-                            agenda: 'Agenda',
-                            date: 'Fecha',
-                            time: 'Hora',
-                            event: 'Evento',
-                            noEventsInRange: 'No hay disponibilidad en este rango',
-                        }}
-                    />
-                </div>
-            </Stack>
-        </Container>
+                    <div style={{ height: '600px' }}>
+                        <Calendar
+                            localizer={localizer}
+                            events={events}
+                            startAccessor="start"
+                            endAccessor="end"
+                            style={{ height: '100%' }}
+                            selectable
+                            onSelectSlot={handleSelectSlot}
+                            onSelectEvent={handleSelectEvent}
+                            view={view}
+                            onView={setView}
+                            date={date}
+                            onNavigate={setDate}
+                            views={['week', 'work_week', 'day', 'agenda']}
+                            defaultView="week"
+                            culture="es"
+                            messages={{
+                                next: 'Siguiente',
+                                previous: 'Anterior',
+                                today: 'Hoy',
+                                month: 'Mes',
+                                week: 'Semana',
+                                day: 'Día',
+                                agenda: 'Agenda',
+                                date: 'Fecha',
+                                time: 'Hora',
+                                event: 'Evento',
+                                noEventsInRange: 'No hay disponibilidad en este rango',
+                            }}
+                        />
+                    </div>
+                </Stack>
+            </Container>
+
+            <Modal opened={opened} onClose={close} title="Detalles de Disponibilidad" centered withinPortal>
+                {selectedEvent && (
+                    <Stack>
+                        <Text fw={500}>{selectedEvent.title}</Text>
+                        <Group>
+                            <Text size="sm" c="dimmed">Desde:</Text>
+                            <Text size="sm">{format(selectedEvent.start, 'PPpp', { locale: es })}</Text>
+                        </Group>
+                        <Group>
+                            <Text size="sm" c="dimmed">Hasta:</Text>
+                            <Text size="sm">{format(selectedEvent.end, 'PPpp', { locale: es })}</Text>
+                        </Group>
+
+                        <Group justify="flex-end" mt="md">
+                            <Button variant="default" onClick={close}>Cerrar</Button>
+                            <Button color="red" onClick={handleDeleteEvent}>Eliminar</Button>
+                        </Group>
+                    </Stack>
+                )}
+            </Modal>
+        </>
     );
 }

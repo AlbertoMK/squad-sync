@@ -26,7 +26,21 @@ public class GameController {
     }
 
     @PostMapping
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<GameDto> createGame(@RequestBody GameDto gameDto) {
         return ResponseEntity.ok(gameService.createGame(gameDto));
+    }
+
+    @DeleteMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteGame(@PathVariable String id) {
+        gameService.deleteGame(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<GameDto> updateGame(@PathVariable String id, @RequestBody GameDto gameDto) {
+        return ResponseEntity.ok(gameService.updateGame(id, gameDto));
     }
 }

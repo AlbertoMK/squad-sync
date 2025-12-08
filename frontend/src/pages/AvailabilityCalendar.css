@@ -1,0 +1,82 @@
+    .rbc-header {
+        border-bottom: 1px solid #444;
+        padding: 10px 0;
+        font-weight: 600;
+        color: #fff;
+    }
+
+    .rbc-month-view,
+    .rbc-time-view,
+    .rbc-agenda-view {
+        border: 1px solid #444;
+    }
+
+    .rbc-day-bg {
+        border-left: 1px solid #444;
+    }
+
+    .rbc-off-range-bg {
+        background-color: #252525;
+    }
+
+    .rbc-today {
+        background-color: rgba(51, 154, 240, 0.15) !important;
+        /* Subtle blue tint */
+    }
+
+    .rbc-event {
+        background-color: #228be6;
+        /* Mantine blue-6 */
+        border: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .rbc-grid-content {
+        border-top: 1px solid #444;
+    }
+
+    .rbc-time-header-content {
+        border-left: 1px solid #444;
+    }
+
+    .rbc-time-content {
+        border-top: 1px solid #444;
+    }
+
+    .rbc-time-gutter .rbc-timeslot-group {
+        border-bottom: 1px solid #444;
+    }
+
+    .rbc-day-slot .rbc-time-slot {
+        border-top: 1px solid #333;
+        /* Fainter lines for slots */
+    }
+
+    .rbc-timeslot-group {
+        border-bottom: 1px solid #444;
+    }
+
+    .rbc-current-time-indicator {
+        background-color: #fa5252;
+        /* Red for current time */
+    }
+
+    /* Toolbar styling */
+    .rbc-toolbar button {
+        color: #e0e0e0;
+        border: 1px solid #444;
+    }
+
+    .rbc-toolbar button:hover {
+        background-color: #333;
+    }
+
+    .rbc-toolbar button.rbc-active {
+        background-color: #228be6 !important;
+        color: white !important;
+        border-color: #228be6 !important;
+    }
+
+    .rbc-toolbar button.rbc-active:hover {
+        background-color: #1c7ed6 !important;
+    }

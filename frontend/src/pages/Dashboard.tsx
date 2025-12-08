@@ -14,7 +14,7 @@ import {
 } from '@mantine/core';
 import { IconRefresh, IconCalendar, IconUsers } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { matchmakingAPI, availabilityAPI } from '../lib/api';
+import { matchmakingAPI } from '../lib/api';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 

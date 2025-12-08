@@ -29,6 +29,8 @@ public class User {
 
     private String avatarColor = "#3b82f6";
 
+    private String role;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)

@@ -31,7 +31,9 @@ public class AuthService {
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setAvatarColor(request.getAvatarColor() != null ? request.getAvatarColor() : "#3b82f6");
+        user.setRole("NORMAL");
 
         userRepository.save(user);
 
@@ -75,6 +77,7 @@ public class AuthService {
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
+        dto.setRole(user.getRole());
         dto.setAvatarColor(user.getAvatarColor());
         dto.setCreatedAt(user.getCreatedAt());
         return dto;

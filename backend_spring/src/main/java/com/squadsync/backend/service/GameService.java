@@ -39,6 +39,24 @@ public class GameService {
         return mapToDto(game);
     }
 
+    public void deleteGame(String id) {
+        gameRepository.deleteById(id);
+    }
+
+    public GameDto updateGame(String id, GameDto gameDto) {
+        Game game = gameRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Game not found"));
+
+        game.setTitle(gameDto.getTitle());
+        game.setMinPlayers(gameDto.getMinPlayers());
+        game.setMaxPlayers(gameDto.getMaxPlayers());
+        game.setGenre(gameDto.getGenre());
+        game.setCoverImageUrl(gameDto.getCoverImageUrl());
+
+        gameRepository.save(game);
+        return mapToDto(game);
+    }
+
     private GameDto mapToDto(Game game) {
         GameDto dto = new GameDto();
         dto.setId(game.getId());

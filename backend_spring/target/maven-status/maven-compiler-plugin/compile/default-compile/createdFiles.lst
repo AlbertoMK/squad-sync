@@ -31,6 +31,7 @@ com\squadsync\backend\controller\PreferenceController.class
 com\squadsync\backend\service\JwtService.class
 com\squadsync\backend\dto\GameDto.class
 com\squadsync\backend\model\Game.class
+com\squadsync\backend\config\GlobalExceptionHandler.class
 com\squadsync\backend\repository\AvailabilitySlotRepository.class
 com\squadsync\backend\repository\GameRepository.class
 com\squadsync\backend\dto\PreferenceDto.class

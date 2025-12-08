@@ -52,6 +52,8 @@ export const gamesAPI = {
     getById: (id: string) => api.get(`/api/games/${id}`),
     create: (data: { title: string; minPlayers?: number; maxPlayers?: number; genre?: string; coverImageUrl?: string }) =>
         api.post('/api/games', data),
+    update: (id: string, data: { title: string; minPlayers?: number; maxPlayers?: number; genre?: string; coverImageUrl?: string }) =>
+        api.put(`/api/games/${id}`, data),
     delete: (id: string) => api.delete(`/api/games/${id}`),
 };
 
