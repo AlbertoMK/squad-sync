@@ -51,13 +51,19 @@ public class MatchmakingService {
             }
         }
 
-        // Clean up preliminary sessions
-        sessionRepository.deleteAll(preliminarySessions);
-        log.info("Deleted {} PRELIMINARY sessions", preliminarySessions.size());
+        // Map preliminary sessions by signature for reuse
+        Map<String, GameSession> existingSessionsMap = new HashMap<>();
+        for (GameSession session : preliminarySessions) {
+            existingSessionsMap.put(generateSessionSignature(session), session);
+        }
 
         List<AvailabilitySlot> slots = slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
         if (slots.isEmpty()) {
-            return Collections.emptyList();
+            // No availability, so no *new* sessions can be formed.
+            // Existing preliminary sessions rely on availability, so they are likely
+            // invalid.
+            sessionRepository.deleteAll(preliminarySessions);
+            return confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList());
         }
 
         // Filter valid slots (not overlapping with confirmed sessions)
@@ -70,9 +76,49 @@ public class MatchmakingService {
         // Generate potential sessions
         List<GameSession> potentialSessions = new ArrayList<>();
         for (TimeSlot slot : viableSlots) {
-            GameSession session = createSessionForSlot(slot);
-            if (session != null) {
-                potentialSessions.add(session);
+            GameSession candidateRequest = createSessionForSlot(slot);
+
+            if (candidateRequest != null) {
+                String signature = generateSessionSignature(candidateRequest);
+
+                if (existingSessionsMap.containsKey(signature)) {
+                    // Reuse existing session
+                    GameSession existingSession = existingSessionsMap.get(signature);
+
+                    // Sync players: Update existingSession players to match candidateRequest
+                    // We want to keep existing players (to preserve status) if they are still in
+                    // the candidate
+                    // We want to add new players
+                    // We want to remove players that are no longer in the candidate
+
+                    Set<String> newCandidateUserIds = candidateRequest.getPlayers().stream()
+                            .map(p -> p.getUser().getId())
+                            .collect(Collectors.toSet());
+
+                    // 1. Remove players not in the new candidate list
+                    existingSession.getPlayers().removeIf(p -> !newCandidateUserIds.contains(p.getUser().getId()));
+
+                    // 2. Add players that are in candidate but not in existing
+                    Set<String> existingUserIds = existingSession.getPlayers().stream()
+                            .map(p -> p.getUser().getId())
+                            .collect(Collectors.toSet());
+
+                    for (GameSessionPlayer candidatePlayer : candidateRequest.getPlayers()) {
+                        if (!existingUserIds.contains(candidatePlayer.getUser().getId())) {
+                            // This is a new player for this session
+                            candidatePlayer.setSession(existingSession); // Repoint to existing session
+                            existingSession.getPlayers().add(candidatePlayer);
+                        }
+                    }
+
+                    // Sync score
+                    existingSession.setSessionScore(candidateRequest.getSessionScore());
+
+                    potentialSessions.add(existingSession);
+                } else {
+                    // New session entirely
+                    potentialSessions.add(candidateRequest);
+                }
             }
         }
 
@@ -104,6 +150,24 @@ public class MatchmakingService {
             if (!conflicts) {
                 selectedSessions.add(candidate);
             }
+        }
+
+        // Identify sessions to delete (were preliminary but not selected in this round)
+        Set<String> selectedSessionIds = selectedSessions.stream()
+                .map(GameSession::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<GameSession> sessionsToDelete = new ArrayList<>();
+        for (GameSession original : preliminarySessions) {
+            if (!selectedSessionIds.contains(original.getId())) {
+                sessionsToDelete.add(original);
+            }
+        }
+
+        if (!sessionsToDelete.isEmpty()) {
+            sessionRepository.deleteAll(sessionsToDelete);
+            log.info("Deleted {} obsolete PRELIMINARY sessions", sessionsToDelete.size());
         }
 
         log.info("Selected {} sessions", selectedSessions.size());
@@ -468,5 +532,11 @@ public class MatchmakingService {
             // Let's save it.
             sessionRepository.save(session);
         }
+    }
+
+    private String generateSessionSignature(GameSession session) {
+        // Use a delimiter safe for IDs and Timestamps
+        return session.getGame().getId() + "|" + session.getStartTime().toString() + "|"
+                + session.getEndTime().toString();
     }
 }

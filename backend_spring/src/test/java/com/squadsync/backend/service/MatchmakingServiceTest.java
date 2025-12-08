@@ -310,4 +310,97 @@ public class MatchmakingServiceTest {
         Assertions.assertTrue(has4HourSession, "Should have a 4h session");
         Assertions.assertTrue(has1HourSession, "Should have a 1h session");
     }
+
+    @Test
+    public void testRunMatchmakingPreservesAcceptances() {
+        // Setup: Existing PRELIMINARY session where U1 has ACCEPTED
+        LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        LocalDateTime end = now.plusHours(1);
+
+        User u1 = new User();
+        u1.setId("u1");
+        User u2 = new User();
+        u2.setId("u2");
+        Game game = new Game();
+        game.setId("g1");
+
+        // Existing Session
+        GameSession existingSession = new GameSession();
+        existingSession.setId("sess1");
+        existingSession.setGame(game);
+        existingSession.setStartTime(now);
+        existingSession.setEndTime(end);
+
+        GameSessionPlayer p1 = new GameSessionPlayer();
+        p1.setUser(u1);
+        p1.setSession(existingSession);
+        p1.setStatus(GameSessionPlayer.SessionPlayerStatus.ACCEPTED);
+
+        GameSessionPlayer p2 = new GameSessionPlayer();
+        p2.setUser(u2);
+        p2.setSession(existingSession);
+        p2.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+
+        existingSession.setPlayers(new ArrayList<>(List.of(p1, p2)));
+
+        // Availability Slots (to regenerate the same session)
+        List<AvailabilitySlot> slots = new ArrayList<>();
+        AvailabilitySlot s1 = new AvailabilitySlot();
+        s1.setId("s1");
+        s1.setUser(u1);
+        s1.setStartTime(now);
+        s1.setEndTime(end);
+        s1.setPreferences(List.of(createPreference(s1, game, 10)));
+        slots.add(s1);
+
+        AvailabilitySlot s2 = new AvailabilitySlot();
+        s2.setId("s2");
+        s2.setUser(u2);
+        s2.setStartTime(now);
+        s2.setEndTime(end);
+        s2.setPreferences(List.of(createPreference(s2, game, 10)));
+        slots.add(s2);
+
+        // Mocks
+        // Return existing session initially
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(List.of(existingSession));
+        when(gameSessionService.getSessionStatus(existingSession)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
+
+        // Return slots
+        when(slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any())).thenReturn(slots);
+        when(slotRepository.findAllById(anyList())).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(0);
+            List<AvailabilitySlot> result = new ArrayList<>();
+            for (String id : ids) {
+                if (id.equals("s1"))
+                    result.add(s1);
+                if (id.equals("s2"))
+                    result.add(s2);
+            }
+            return result;
+        });
+
+        when(gameRepository.findAll()).thenReturn(List.of(game));
+        when(preferenceRepository.findByUserIdIn(anyList())).thenReturn(Collections.emptyList());
+
+        // Mock saveAll to return the input list (simulating save)
+        when(sessionRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        // ACTION
+        List<GameSessionDto> result = matchmakingService.runMatchmaking();
+
+        // ASSERT
+        Assertions.assertFalse(result.isEmpty());
+        GameSessionDto newSession = result.get(0);
+
+        // Find player u1 and check status
+        var u1Status = newSession.getPlayers().stream().filter(p -> p.getUserId().equals("u1")).findFirst().get()
+                .getStatus();
+        var u2Status = newSession.getPlayers().stream().filter(p -> p.getUserId().equals("u2")).findFirst().get()
+                .getStatus();
+
+        Assertions.assertEquals("ACCEPTED", u1Status, "User 1 should remain ACCEPTED if session is identical");
+        Assertions.assertEquals("PENDING", u2Status, "User 2 should remain PENDING");
+    }
 }
