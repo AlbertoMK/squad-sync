@@ -193,57 +193,73 @@ public class MatchmakingService {
     }
 
     private List<TimeSlot> findOverlappingSlots(List<AvailabilitySlot> slots) {
-        List<TimeSlot> overlaps = new ArrayList<>();
-        Set<String> processed = new HashSet<>();
+        // 1. Collect all unique time points
+        Set<LocalDateTime> timePoints = new HashSet<>();
+        for (AvailabilitySlot slot : slots) {
+            timePoints.add(slot.getStartTime());
+            timePoints.add(slot.getEndTime());
+        }
+        List<LocalDateTime> sortedTimePoints = new ArrayList<>(timePoints);
+        Collections.sort(sortedTimePoints);
 
-        for (int i = 0; i < slots.size(); i++) {
-            AvailabilitySlot slotA = slots.get(i);
-            if (processed.contains(slotA.getId()))
+        List<TimeSlot> candidateSlots = new ArrayList<>();
+
+        // 2. Iterate through atomic intervals
+        for (int i = 0; i < sortedTimePoints.size() - 1; i++) {
+            LocalDateTime start = sortedTimePoints.get(i);
+            LocalDateTime end = sortedTimePoints.get(i + 1);
+
+            // Skip zero-duration intervals
+            if (start.equals(end))
                 continue;
 
-            Set<String> overlappingSlotIds = new HashSet<>();
-            overlappingSlotIds.add(slotA.getId());
+            // Find active slots in this interval
+            // A slot is active if slot.start <= start && slot.end >= end
+            List<String> activeSlotIds = new ArrayList<>();
+            Set<String> activeUserIds = new HashSet<>();
 
-            LocalDateTime overlapStart = slotA.getStartTime();
-            LocalDateTime overlapEnd = slotA.getEndTime();
-
-            for (int j = i + 1; j < slots.size(); j++) {
-                AvailabilitySlot slotB = slots.get(j);
-
-                if (doSlotsOverlap(slotA, slotB)) {
-                    // Check if users are different (same user can't play with themselves)
-                    if (!slotA.getUser().getId().equals(slotB.getUser().getId())) {
-
-                        // Calculate potential new intersection
-                        LocalDateTime newStart = overlapStart;
-                        LocalDateTime newEnd = overlapEnd;
-
-                        if (slotB.getStartTime().isAfter(newStart)) {
-                            newStart = slotB.getStartTime();
-                        }
-                        if (slotB.getEndTime().isBefore(newEnd)) {
-                            newEnd = slotB.getEndTime();
-                        }
-
-                        // Only add if it still results in a valid overlap
-                        if (newStart.isBefore(newEnd)) {
-                            overlappingSlotIds.add(slotB.getId());
-                            overlapStart = newStart;
-                            overlapEnd = newEnd;
-                        }
+            for (AvailabilitySlot slot : slots) {
+                if (!slot.getStartTime().isAfter(start) && !slot.getEndTime().isBefore(end)) {
+                    // Check if user already added (avoid same user multiple slots issue if any)
+                    if (!activeUserIds.contains(slot.getUser().getId())) {
+                        activeSlotIds.add(slot.getId());
+                        activeUserIds.add(slot.getUser().getId());
                     }
                 }
             }
 
-            if (overlappingSlotIds.size() >= MIN_PLAYERS_FOR_SESSION && overlapStart.isBefore(overlapEnd)) {
-                // Enforce minimum session duration of 1 hour (60 minutes)
-                if (java.time.Duration.between(overlapStart, overlapEnd).toMinutes() >= 60) {
-                    overlaps.add(new TimeSlot(overlapStart, overlapEnd, new ArrayList<>(overlappingSlotIds)));
-                }
+            if (activeSlotIds.size() >= MIN_PLAYERS_FOR_SESSION) {
+                candidateSlots.add(new TimeSlot(start, end, activeSlotIds));
             }
-            processed.add(slotA.getId());
         }
-        return overlaps;
+
+        // 3. Merge consecutive slots with same users
+        List<TimeSlot> mergedSlots = new ArrayList<>();
+        if (candidateSlots.isEmpty())
+            return mergedSlots;
+
+        TimeSlot current = candidateSlots.get(0);
+        for (int i = 1; i < candidateSlots.size(); i++) {
+            TimeSlot next = candidateSlots.get(i);
+
+            // Check if contiguous and same users
+            Set<String> currentIds = new HashSet<>(current.getSlotIds());
+            Set<String> nextIds = new HashSet<>(next.getSlotIds());
+
+            if (current.endTime.equals(next.startTime) && currentIds.equals(nextIds)) {
+                // Merge
+                current.endTime = next.endTime;
+            } else {
+                mergedSlots.add(current);
+                current = next;
+            }
+        }
+        mergedSlots.add(current);
+
+        // 4. Filter by duration
+        return mergedSlots.stream()
+                .filter(slot -> java.time.Duration.between(slot.startTime, slot.endTime).toMinutes() >= 60)
+                .collect(Collectors.toList());
     }
 
     private boolean doSlotsOverlap(AvailabilitySlot slotA, AvailabilitySlot slotB) {
