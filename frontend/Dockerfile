@@ -3,6 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
+RUN npm install @rollup/rollup-linux-arm64-musl --save-optional
 COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
