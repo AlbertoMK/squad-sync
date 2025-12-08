@@ -242,7 +242,7 @@ export default function AvailabilityCalendar() {
                                     <div key={game.id}>
                                         <Text size="sm" fw={500}>{game.title}</Text>
                                         <Slider
-                                            value={customPreferences[game.id] || 5}
+                                            value={customPreferences[game.id] ?? 5}
                                             onChange={(val) => setCustomPreferences(prev => ({ ...prev, [game.id]: val }))}
                                             min={0}
                                             max={10}
