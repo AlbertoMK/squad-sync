@@ -425,9 +425,14 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                                 ? session.players.filter(p => p.status === 'ACCEPTED')
                                 : session.players
                             ).map((p) => (
-                                <Text key={p.userId} size="xs" c="dimmed">
-                                    {p.username}
-                                </Text>
+                                <Group key={p.userId} gap={4}>
+                                    <Text size="xs" c="dimmed">
+                                        {p.username}
+                                    </Text>
+                                    {session.status === 'PRELIMINARY' && p.status === 'ACCEPTED' && (
+                                        <IconCheck size={12} color="green" />
+                                    )}
+                                </Group>
                             ))}
                         </Stack>
                     </Stack>
