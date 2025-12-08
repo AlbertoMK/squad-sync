@@ -1,0 +1,7 @@
+backend_spring/target/
+*.class
+.idea/
+*.iml
+.DS_Store
+*.log
+test_output*.txt
