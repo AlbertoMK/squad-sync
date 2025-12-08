@@ -10,6 +10,8 @@ import com.squadsync.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -34,8 +36,9 @@ public class AvailabilityService {
 
         AvailabilitySlot slot = new AvailabilitySlot();
         slot.setUser(user);
-        slot.setStartTime(dto.getStartTime());
-        slot.setEndTime(dto.getEndTime());
+        // Convert Instant (DTO) to LocalDateTime (Entity) using UTC
+        slot.setStartTime(LocalDateTime.ofInstant(dto.getStartTime(), ZoneOffset.UTC));
+        slot.setEndTime(LocalDateTime.ofInstant(dto.getEndTime(), ZoneOffset.UTC));
 
         if (dto.getGameId() != null) {
             Game game = gameRepository.findById(dto.getGameId())
@@ -90,8 +93,9 @@ public class AvailabilityService {
         AvailabilitySlotDto dto = new AvailabilitySlotDto();
         dto.setId(slot.getId());
         dto.setUserId(slot.getUser().getId());
-        dto.setStartTime(slot.getStartTime());
-        dto.setEndTime(slot.getEndTime());
+        // Convert LocalDateTime (Entity) to Instant (DTO) using UTC
+        dto.setStartTime(slot.getStartTime().toInstant(ZoneOffset.UTC));
+        dto.setEndTime(slot.getEndTime().toInstant(ZoneOffset.UTC));
         if (slot.getGame() != null) {
             dto.setGameId(slot.getGame().getId());
         }
