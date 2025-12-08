@@ -27,10 +27,19 @@ public class GameSession {
     @Column(nullable = false)
     private LocalDateTime endTime;
 
-    @Column(columnDefinition = "TEXT")
-    private String playerIds; // JSON array of user IDs
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<GameSessionPlayer> players = new java.util.ArrayList<>();
+
+    @Enumerated(EnumType.STRING)
+    private SessionStatus status = SessionStatus.PRELIMINARY;
 
     private double sessionScore;
 
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    public enum SessionStatus {
+        PRELIMINARY,
+        CONFIRMED,
+        CANCELLED
+    }
 }

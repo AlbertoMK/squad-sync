@@ -9,7 +9,6 @@ com\squadsync\backend\model\GameSession.class
 com\squadsync\backend\service\MatchmakingService$TimeSlot.class
 com\squadsync\backend\dto\AuthDto.class
 com\squadsync\backend\model\AvailabilitySlot.class
-com\squadsync\backend\service\MatchmakingService$1.class
 com\squadsync\backend\dto\AuthDto$LoginRequest.class
 com\squadsync\backend\service\GameService.class
 com\squadsync\backend\service\AvailabilityService.class

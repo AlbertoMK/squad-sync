@@ -11,5 +11,5 @@ import java.util.List;
 public interface AvailabilitySlotRepository extends JpaRepository<AvailabilitySlot, String> {
     List<AvailabilitySlot> findByUserId(String userId);
 
-    List<AvailabilitySlot> findByStartTimeGreaterThanEqualOrderByStartTimeAsc(LocalDateTime startTime);
+    List<AvailabilitySlot> findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime now);
 }

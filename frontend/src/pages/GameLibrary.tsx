@@ -286,12 +286,21 @@ export default function GameLibrary() {
                                             <Slider
                                                 value={weight}
                                                 onChange={(value) => handleLocalPreferenceChange(game.id, value)}
-                                                onChangeEnd={(value) => handleSavePreference(game.id, value)}
-                                                min={1}
+                                                onChangeEnd={(value) => {
+                                                    handleSavePreference(game.id, value);
+                                                    if (value === 0) {
+                                                        notifications.show({
+                                                            title: 'Juego excluido',
+                                                            message: 'Al establecer la preferencia en 0, no se te tendrá en cuenta para sesiones de este juego.',
+                                                            color: 'orange',
+                                                        });
+                                                    }
+                                                }}
+                                                min={0}
                                                 max={10}
                                                 step={1}
                                                 marks={[
-                                                    { value: 1, label: '1' },
+                                                    { value: 0, label: '0' },
                                                     { value: 5, label: '5' },
                                                     { value: 10, label: '10' },
                                                 ]}

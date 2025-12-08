@@ -12,4 +12,6 @@ public interface GameSessionRepository extends JpaRepository<GameSession, String
     List<GameSession> findByStartTimeGreaterThanEqualOrderByStartTimeAsc(LocalDateTime startTime);
 
     List<GameSession> findByGameIdOrderByCreatedAtDesc(String gameId);
+
+    List<GameSession> findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime now);
 }

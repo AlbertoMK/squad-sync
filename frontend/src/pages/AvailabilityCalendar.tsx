@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Stack, Loader, Center, Modal, Button, Text, Group } from '@mantine/core';
+import { Container, Title, Stack, Loader, Center, Modal, Button, Text, Group, Radio, Slider, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { notifications } from '@mantine/notifications';
-import { availabilityAPI } from '../lib/api';
+import { availabilityAPI, gamesAPI } from '../lib/api';
 import './AvailabilityCalendar.css';
 
 const locales = {
@@ -36,7 +36,13 @@ export default function AvailabilityCalendar() {
     const [view, setView] = useState<CalendarView>('week');
     const [date, setDate] = useState(new Date());
     const [selectedEvent, setSelectedEvent] = useState<AvailabilityEvent | null>(null);
-    const [opened, { open, close }] = useDisclosure(false);
+    const [detailsOpened, { open: openDetails, close: closeDetails }] = useDisclosure(false);
+    const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
+
+    const [newSlot, setNewSlot] = useState<{ start: Date; end: Date } | null>(null);
+    const [preferenceType, setPreferenceType] = useState('default');
+    const [games, setGames] = useState<any[]>([]);
+    const [customPreferences, setCustomPreferences] = useState<Record<string, number>>({});
 
     const loadAvailability = async () => {
         try {
@@ -56,13 +62,25 @@ export default function AvailabilityCalendar() {
         }
     };
 
+    const loadGames = async () => {
+        try {
+            const response = await gamesAPI.getAll();
+            setGames(response.data);
+            // Initialize custom preferences with default 5
+            const initialPrefs: Record<string, number> = {};
+            response.data.forEach((g: any) => initialPrefs[g.id] = 5);
+            setCustomPreferences(initialPrefs);
+        } catch (error) {
+            console.error('Error loading games:', error);
+        }
+    };
+
     useEffect(() => {
         loadAvailability();
+        loadGames();
     }, []);
 
     const handleSelectSlot = async ({ start, end }: { start: Date; end: Date }) => {
-        // Prevent full day selection (often triggered from month view or day headers)
-        // If start and end are 00:00:00, it's likely a full day selection
         if (start.getHours() === 0 && start.getMinutes() === 0 &&
             end.getHours() === 0 && end.getMinutes() === 0) {
             notifications.show({
@@ -73,16 +91,34 @@ export default function AvailabilityCalendar() {
             return;
         }
 
+        setNewSlot({ start, end });
+        setPreferenceType('default');
+        openCreate();
+    };
+
+    const handleConfirmCreate = async () => {
+        if (!newSlot) return;
+
         try {
-            await availabilityAPI.create({
-                startTime: start.toISOString(),
-                endTime: end.toISOString(),
-            });
+            const payload: any = {
+                startTime: newSlot.start.toISOString(),
+                endTime: newSlot.end.toISOString(),
+            };
+
+            if (preferenceType === 'custom') {
+                payload.preferences = Object.entries(customPreferences).map(([gameId, weight]) => ({
+                    gameId,
+                    weight
+                }));
+            }
+
+            await availabilityAPI.create(payload);
             notifications.show({
                 title: 'Disponibilidad añadida',
                 message: 'Tu franja horaria ha sido guardada',
                 color: 'green',
             });
+            closeCreate();
             await loadAvailability();
         } catch (error: any) {
             notifications.show({
@@ -95,7 +131,7 @@ export default function AvailabilityCalendar() {
 
     const handleSelectEvent = (event: AvailabilityEvent) => {
         setSelectedEvent(event);
-        open();
+        openDetails();
     };
 
     const handleDeleteEvent = async () => {
@@ -108,7 +144,7 @@ export default function AvailabilityCalendar() {
                 message: 'La franja horaria ha sido eliminada',
                 color: 'blue',
             });
-            close();
+            closeDetails();
             await loadAvailability();
         } catch (error: any) {
             notifications.show({
@@ -168,7 +204,7 @@ export default function AvailabilityCalendar() {
                 </Stack>
             </Container>
 
-            <Modal opened={opened} onClose={close} title="Detalles de Disponibilidad" centered withinPortal>
+            <Modal opened={detailsOpened} onClose={closeDetails} title="Detalles de Disponibilidad" centered withinPortal>
                 {selectedEvent && (
                     <Stack>
                         <Text fw={500}>{selectedEvent.title}</Text>
@@ -182,11 +218,51 @@ export default function AvailabilityCalendar() {
                         </Group>
 
                         <Group justify="flex-end" mt="md">
-                            <Button variant="default" onClick={close}>Cerrar</Button>
+                            <Button variant="default" onClick={closeDetails}>Cerrar</Button>
                             <Button color="red" onClick={handleDeleteEvent}>Eliminar</Button>
                         </Group>
                     </Stack>
                 )}
+            </Modal>
+
+            <Modal opened={createOpened} onClose={closeCreate} title="Nueva Disponibilidad" centered size="lg">
+                <Stack>
+                    <Text>¿Qué preferencias quieres usar para esta sesión?</Text>
+                    <Radio.Group value={preferenceType} onChange={setPreferenceType}>
+                        <Group mt="xs">
+                            <Radio value="default" label="Mis preferencias habituales" />
+                            <Radio value="custom" label="Personalizar para esta sesión" />
+                        </Group>
+                    </Radio.Group>
+
+                    {preferenceType === 'custom' && (
+                        <ScrollArea h={300} type="always" offsetScrollbars>
+                            <Stack gap="md" pr="md">
+                                {games.map(game => (
+                                    <div key={game.id}>
+                                        <Text size="sm" fw={500}>{game.title}</Text>
+                                        <Slider
+                                            value={customPreferences[game.id] || 5}
+                                            onChange={(val) => setCustomPreferences(prev => ({ ...prev, [game.id]: val }))}
+                                            min={0}
+                                            max={10}
+                                            marks={[
+                                                { value: 0, label: '0' },
+                                                { value: 5, label: '5' },
+                                                { value: 10, label: '10' },
+                                            ]}
+                                        />
+                                    </div>
+                                ))}
+                            </Stack>
+                        </ScrollArea>
+                    )}
+
+                    <Group justify="flex-end" mt="md">
+                        <Button variant="default" onClick={closeCreate}>Cancelar</Button>
+                        <Button onClick={handleConfirmCreate}>Guardar</Button>
+                    </Group>
+                </Stack>
             </Modal>
         </>
     );

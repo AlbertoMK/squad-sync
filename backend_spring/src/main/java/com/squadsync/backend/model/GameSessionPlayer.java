@@ -6,24 +6,31 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.GenericGenerator;
 
 @Entity
-@Table(name = "user_game_preferences", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "user_id", "game_id" })
-})
+@Table(name = "game_session_players")
 @Data
 @NoArgsConstructor
-public class UserGamePreference {
+public class GameSessionPlayer {
     @Id
     @GeneratedValue(generator = "uuid2")
     @GenericGenerator(name = "uuid2", strategy = "uuid2")
     private String id;
 
     @ManyToOne
+    @JoinColumn(name = "session_id", nullable = false)
+    private GameSession session;
+
+    @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne
-    @JoinColumn(name = "game_id", nullable = false)
-    private Game game;
+    @Enumerated(EnumType.STRING)
+    private SessionPlayerStatus status = SessionPlayerStatus.PENDING;
 
-    private int weight = 5; // 0-10 scale
+    private String rejectionReason;
+
+    public enum SessionPlayerStatus {
+        PENDING,
+        ACCEPTED,
+        REJECTED
+    }
 }

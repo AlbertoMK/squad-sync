@@ -10,4 +10,5 @@ public class AvailabilitySlotDto {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private String gameId;
+    private java.util.List<PreferenceDto> preferences;
 }

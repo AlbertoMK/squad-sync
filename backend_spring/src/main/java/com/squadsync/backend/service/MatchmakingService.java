@@ -1,16 +1,13 @@
 package com.squadsync.backend.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.squadsync.backend.dto.GameDto;
 import com.squadsync.backend.dto.GameSessionDto;
+import com.squadsync.backend.dto.GameSessionPlayerDto;
 import com.squadsync.backend.dto.UserDto;
 import com.squadsync.backend.model.*;
 import com.squadsync.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,32 +24,79 @@ public class MatchmakingService {
     private final GameRepository gameRepository;
     private final UserGamePreferenceRepository preferenceRepository;
     private final GameSessionRepository sessionRepository;
-    private final UserRepository userRepository;
-    private final ObjectMapper objectMapper;
 
-    private static final int MIN_PLAYERS_FOR_SESSION = 3;
+    private final GameSessionService gameSessionService;
 
-    @Scheduled(fixedRate = 300000) // Run every 5 minutes
-    @Transactional
-    public void runMatchmakingJob() {
-        runMatchmaking();
-    }
+    private static final int MIN_PLAYERS_FOR_SESSION = 2;
 
     @Transactional
     public List<GameSessionDto> runMatchmaking() {
         log.info("Running matchmaking algorithm...");
 
         LocalDateTime now = LocalDateTime.now();
-        List<AvailabilitySlot> slots = slotRepository.findByStartTimeGreaterThanEqualOrderByStartTimeAsc(now);
+
+        // Fetch all active sessions
+        List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
+
+        List<GameSession> confirmedSessions = new ArrayList<>();
+        List<GameSession> preliminarySessions = new ArrayList<>();
+
+        for (GameSession session : activeSessions) {
+            GameSession.SessionStatus status = gameSessionService.getSessionStatus(session);
+            if (status == GameSession.SessionStatus.CONFIRMED) {
+                confirmedSessions.add(session);
+            } else {
+                preliminarySessions.add(session);
+            }
+        }
+
+        // 1. Delete all PRELIMINARY sessions
+        sessionRepository.deleteAll(preliminarySessions);
+        log.info("Deleted {} PRELIMINARY sessions", preliminarySessions.size());
+
+        // 2. Use CONFIRMED sessions to exclude overlapping players
+        Set<String> busyUserIds = new HashSet<>();
+        for (GameSession session : confirmedSessions) {
+            session.getPlayers().forEach(p -> busyUserIds.add(p.getUser().getId()));
+        }
+        log.info("Found {} confirmed sessions, excluding {} users", confirmedSessions.size(), busyUserIds.size());
+
+        List<AvailabilitySlot> slots = slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
 
         if (slots.isEmpty()) {
             log.info("No availability slots found");
             return Collections.emptyList();
         }
 
-        List<TimeSlot> overlappingSlots = findOverlappingSlots(slots);
+        // Filter out slots for users who are already in a confirmed session
+        List<AvailabilitySlot> availableSlots = new ArrayList<>();
+        for (AvailabilitySlot slot : slots) {
+            boolean isBusy = false;
+            for (GameSession session : confirmedSessions) {
+                // Check if this user is in this session
+                boolean userInSession = session.getPlayers().stream()
+                        .anyMatch(p -> p.getUser().getId().equals(slot.getUser().getId()));
+
+                if (userInSession) {
+                    // Check time overlap
+                    if (slot.getStartTime().isBefore(session.getEndTime()) &&
+                            session.getStartTime().isBefore(slot.getEndTime())) {
+                        isBusy = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!isBusy) {
+                availableSlots.add(slot);
+            }
+        }
+
+        log.info("Filtered down to {} available slots after checking confirmed sessions", availableSlots.size());
+
+        List<TimeSlot> overlappingSlots = findOverlappingSlots(availableSlots);
         List<TimeSlot> viableSlots = overlappingSlots.stream()
-                .filter(slot -> slot.getUserIds().size() >= MIN_PLAYERS_FOR_SESSION)
+                .filter(slot -> slot.getSlotIds().size() >= MIN_PLAYERS_FOR_SESSION)
                 .collect(Collectors.toList());
 
         log.info("Found {} viable time slots", viableSlots.size());
@@ -66,7 +110,14 @@ public class MatchmakingService {
         }
 
         log.info("Created {} game sessions", sessions.size());
-        return sessions.stream().map(this::mapToDto).collect(Collectors.toList());
+
+        // Combine newly created sessions with existing confirmed sessions for the
+        // return value
+        List<GameSessionDto> result = new ArrayList<>();
+        result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
+        result.addAll(sessions.stream().map(this::mapToDto).collect(Collectors.toList()));
+
+        return result;
     }
 
     private List<TimeSlot> findOverlappingSlots(List<AvailabilitySlot> slots) {
@@ -78,8 +129,9 @@ public class MatchmakingService {
             if (processed.contains(slotA.getId()))
                 continue;
 
-            Set<String> overlappingUsers = new HashSet<>();
-            overlappingUsers.add(slotA.getUser().getId());
+            Set<String> overlappingSlotIds = new HashSet<>();
+            overlappingSlotIds.add(slotA.getId());
+
             LocalDateTime overlapStart = slotA.getStartTime();
             LocalDateTime overlapEnd = slotA.getEndTime();
 
@@ -87,19 +139,32 @@ public class MatchmakingService {
                 AvailabilitySlot slotB = slots.get(j);
 
                 if (doSlotsOverlap(slotA, slotB)) {
-                    overlappingUsers.add(slotB.getUser().getId());
+                    // Check if users are different (same user can't play with themselves)
+                    if (!slotA.getUser().getId().equals(slotB.getUser().getId())) {
 
-                    if (slotB.getStartTime().isAfter(overlapStart)) {
-                        overlapStart = slotB.getStartTime();
-                    }
-                    if (slotB.getEndTime().isBefore(overlapEnd)) {
-                        overlapEnd = slotB.getEndTime();
+                        // Calculate potential new intersection
+                        LocalDateTime newStart = overlapStart;
+                        LocalDateTime newEnd = overlapEnd;
+
+                        if (slotB.getStartTime().isAfter(newStart)) {
+                            newStart = slotB.getStartTime();
+                        }
+                        if (slotB.getEndTime().isBefore(newEnd)) {
+                            newEnd = slotB.getEndTime();
+                        }
+
+                        // Only add if it still results in a valid overlap
+                        if (newStart.isBefore(newEnd)) {
+                            overlappingSlotIds.add(slotB.getId());
+                            overlapStart = newStart;
+                            overlapEnd = newEnd;
+                        }
                     }
                 }
             }
 
-            if (overlappingUsers.size() >= 2) {
-                overlaps.add(new TimeSlot(overlapStart, overlapEnd, new ArrayList<>(overlappingUsers)));
+            if (overlappingSlotIds.size() >= MIN_PLAYERS_FOR_SESSION && overlapStart.isBefore(overlapEnd)) {
+                overlaps.add(new TimeSlot(overlapStart, overlapEnd, new ArrayList<>(overlappingSlotIds)));
             }
             processed.add(slotA.getId());
         }
@@ -111,33 +176,57 @@ public class MatchmakingService {
                 slotB.getStartTime().isBefore(slotA.getEndTime());
     }
 
-    private GameSession createSessionForSlot(TimeSlot slot) {
+    private GameSession createSessionForSlot(TimeSlot timeSlot) {
         List<Game> games = gameRepository.findAll();
         if (games.isEmpty())
             return null;
 
-        List<UserGamePreference> preferences = preferenceRepository.findByUserIdIn(slot.getUserIds());
+        List<AvailabilitySlot> slots = slotRepository.findAllById(timeSlot.getSlotIds());
+        List<String> userIds = slots.stream().map(s -> s.getUser().getId()).collect(Collectors.toList());
+
+        List<UserGamePreference> globalPreferences = preferenceRepository.findByUserIdIn(userIds);
         List<GameScore> gameScores = new ArrayList<>();
 
         for (Game game : games) {
-            // Check recent sessions rotation
-            List<GameSession> recentSessions = sessionRepository.findByGameIdOrderByCreatedAtDesc(game.getId());
-            if (recentSessions.size() >= 3)
-                continue;
-
             int score = 0;
-            for (String userId : slot.getUserIds()) {
-                int weight = preferences.stream()
-                        .filter(p -> p.getUser().getId().equals(userId) && p.getGame().getId().equals(game.getId()))
-                        .findFirst()
-                        .map(UserGamePreference::getWeight)
-                        .orElse(5);
-                score += weight;
+            boolean anyPlayerVetoed = false;
+            int playerCount = 0;
+
+            for (AvailabilitySlot slot : slots) {
+                int weight = 5; // Default
+
+                // Check for override
+                Optional<AvailabilityGamePreference> override = slot.getPreferences().stream()
+                        .filter(p -> p.getGame().getId().equals(game.getId()))
+                        .findFirst();
+
+                if (override.isPresent()) {
+                    weight = override.get().getWeight();
+                } else {
+                    // Fallback to global preference
+                    weight = globalPreferences.stream()
+                            .filter(p -> p.getUser().getId().equals(slot.getUser().getId())
+                                    && p.getGame().getId().equals(game.getId()))
+                            .findFirst()
+                            .map(UserGamePreference::getWeight)
+                            .orElse(5);
+                }
+
+                if (weight == 0) {
+                    anyPlayerVetoed = true;
+                } else {
+                    score += weight;
+                    playerCount++;
+                }
             }
 
-            score += slot.getUserIds().size() * 2; // Participation bonus
+            if (playerCount < MIN_PLAYERS_FOR_SESSION) {
+                continue; // Not enough players for this game
+            }
 
-            gameScores.add(new GameScore(game, score));
+            score += playerCount * 2; // Participation bonus
+
+            gameScores.add(new GameScore(game, score, playerCount));
         }
 
         if (gameScores.isEmpty())
@@ -146,26 +235,62 @@ public class MatchmakingService {
         gameScores.sort((a, b) -> b.score - a.score);
         GameScore bestGame = gameScores.get(0);
 
-        // Check existing session
-        // Note: Simplified check, ideally check DB for exact overlap
+        // Filter slots/users that are actually playing (didn't veto)
+        List<AvailabilitySlot> participatingSlots = new ArrayList<>();
+        for (AvailabilitySlot slot : slots) {
+            int weight = 5;
+            Optional<AvailabilityGamePreference> override = slot.getPreferences().stream()
+                    .filter(p -> p.getGame().getId().equals(bestGame.game.getId()))
+                    .findFirst();
+            if (override.isPresent()) {
+                weight = override.get().getWeight();
+            } else {
+                weight = globalPreferences.stream()
+                        .filter(p -> p.getUser().getId().equals(slot.getUser().getId())
+                                && p.getGame().getId().equals(bestGame.game.getId()))
+                        .findFirst()
+                        .map(UserGamePreference::getWeight)
+                        .orElse(5);
+            }
+
+            if (weight > 0) {
+                participatingSlots.add(slot);
+            }
+        }
+
+        if (participatingSlots.size() < MIN_PLAYERS_FOR_SESSION)
+            return null;
 
         GameSession session = new GameSession();
         session.setGame(bestGame.game);
-        session.setStartTime(slot.startTime);
-        session.setEndTime(slot.endTime);
+
+        // Clamp start time to now if the slot started in the past
+        LocalDateTime sessionStartTime = timeSlot.startTime;
+        if (sessionStartTime.isBefore(LocalDateTime.now())) {
+            sessionStartTime = LocalDateTime.now();
+        }
+        session.setStartTime(sessionStartTime);
+
+        session.setEndTime(timeSlot.endTime);
+        session.setEndTime(timeSlot.endTime);
         session.setSessionScore(bestGame.score);
-        try {
-            session.setPlayerIds(objectMapper.writeValueAsString(slot.userIds));
-        } catch (JsonProcessingException e) {
-            log.error("Error serializing player IDs", e);
-            return null;
+        session.setSessionScore(bestGame.score);
+        // Status is no longer set here, it's dynamic
+
+        // Add players
+        for (AvailabilitySlot slot : participatingSlots) {
+            GameSessionPlayer player = new GameSessionPlayer();
+            player.setSession(session);
+            player.setUser(slot.getUser());
+            player.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+            session.getPlayers().add(player);
         }
 
         return sessionRepository.save(session);
     }
 
     public List<GameSessionDto> getUpcomingSessions() {
-        return sessionRepository.findByStartTimeGreaterThanEqualOrderByStartTimeAsc(LocalDateTime.now())
+        return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime.now())
                 .stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
@@ -180,6 +305,9 @@ public class MatchmakingService {
         dto.setSessionScore(session.getSessionScore());
         dto.setCreatedAt(session.getCreatedAt());
 
+        // Calculate dynamic status
+        dto.setStatus(gameSessionService.getSessionStatus(session).name());
+
         // Map Game
         GameDto gameDto = new GameDto();
         gameDto.setId(session.getGame().getId());
@@ -187,24 +315,22 @@ public class MatchmakingService {
         gameDto.setCoverImageUrl(session.getGame().getCoverImageUrl());
         dto.setGame(gameDto);
 
-        try {
-            List<String> playerIds = objectMapper.readValue(session.getPlayerIds(), new TypeReference<List<String>>() {
-            });
-            dto.setPlayerIds(playerIds);
+        List<String> playerIds = session.getPlayers().stream()
+                .map(p -> p.getUser().getId())
+                .collect(Collectors.toList());
+        dto.setPlayerIds(playerIds);
 
-            List<UserDto> players = userRepository.findAllById(playerIds).stream()
-                    .map(user -> {
-                        UserDto u = new UserDto();
-                        u.setId(user.getId());
-                        u.setUsername(user.getUsername());
-                        u.setAvatarColor(user.getAvatarColor());
-                        return u;
-                    })
-                    .collect(Collectors.toList());
-            dto.setPlayers(players);
-        } catch (JsonProcessingException e) {
-            log.error("Error deserializing player IDs", e);
-        }
+        List<GameSessionPlayerDto> players = session.getPlayers().stream()
+                .map(p -> {
+                    GameSessionPlayerDto u = new GameSessionPlayerDto();
+                    u.setUserId(p.getUser().getId());
+                    u.setUsername(p.getUser().getUsername());
+                    u.setAvatarColor(p.getUser().getAvatarColor());
+                    u.setStatus(p.getStatus().name());
+                    return u;
+                })
+                .collect(Collectors.toList());
+        dto.setPlayers(players);
 
         return dto;
     }
@@ -212,26 +338,65 @@ public class MatchmakingService {
     private static class TimeSlot {
         LocalDateTime startTime;
         LocalDateTime endTime;
-        List<String> userIds;
+        List<String> slotIds; // Changed from userIds to slotIds to access preferences
 
-        public TimeSlot(LocalDateTime startTime, LocalDateTime endTime, List<String> userIds) {
+        public TimeSlot(LocalDateTime startTime, LocalDateTime endTime, List<String> slotIds) {
             this.startTime = startTime;
             this.endTime = endTime;
-            this.userIds = userIds;
+            this.slotIds = slotIds;
         }
 
-        public List<String> getUserIds() {
-            return userIds;
+        public List<String> getSlotIds() {
+            return slotIds;
         }
     }
 
     private static class GameScore {
         Game game;
         int score;
+        int playerCount;
 
-        public GameScore(Game game, int score) {
+        public GameScore(Game game, int score, int playerCount) {
             this.game = game;
             this.score = score;
+            this.playerCount = playerCount;
+        }
+    }
+
+    public List<GameSession> findSessionsForUser(String userId) {
+        // We need to fetch all active sessions and filter in memory or add a repository
+        // method
+        // For efficiency, let's add a repository method or just filter active sessions
+        // here
+        // Since we don't have a direct query for "sessions by user" yet, let's filter
+        // active sessions
+        LocalDateTime now = LocalDateTime.now();
+        List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
+
+        return activeSessions.stream()
+                .filter(s -> s.getPlayers().stream().anyMatch(p -> p.getUser().getId().equals(userId)))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void removePlayerFromSession(String sessionId, String userId) {
+        GameSession session = sessionRepository.findById(sessionId).orElse(null);
+        if (session == null)
+            return;
+
+        boolean removed = session.getPlayers().removeIf(p -> p.getUser().getId().equals(userId));
+
+        if (removed) {
+            log.info("Removed user {} from session {} due to availability deletion", userId, sessionId);
+
+            // If session has too few players, we might want to delete it or let dynamic
+            // status handle it
+            // Dynamic status will mark it as PRELIMINARY if < min players.
+            // But if it has 0 or 1 player, maybe we should just keep it as is,
+            // and let the next matchmaking run clean it up or fill it?
+            // Actually, if we remove a player, the session might become invalid.
+            // Let's save it.
+            sessionRepository.save(session);
         }
     }
 }

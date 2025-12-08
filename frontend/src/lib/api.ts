@@ -82,3 +82,9 @@ export const matchmakingAPI = {
     getSessions: () => api.get('/api/matchmaking/sessions'),
     getSessionById: (id: string) => api.get(`/api/matchmaking/sessions/${id}`),
 };
+
+// Sessions API
+export const sessionsAPI = {
+    accept: (sessionId: string) => api.post(`/api/sessions/${sessionId}/accept`),
+    reject: (sessionId: string, reason: string) => api.post(`/api/sessions/${sessionId}/reject`, { reason }),
+};

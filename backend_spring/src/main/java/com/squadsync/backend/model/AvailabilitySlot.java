@@ -31,5 +31,8 @@ public class AvailabilitySlot {
     @JoinColumn(name = "game_id")
     private Game game; // Optional specific game
 
+    @OneToMany(mappedBy = "availabilitySlot", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<AvailabilityGamePreference> preferences = new java.util.ArrayList<>();
+
     private LocalDateTime createdAt = LocalDateTime.now();
 }

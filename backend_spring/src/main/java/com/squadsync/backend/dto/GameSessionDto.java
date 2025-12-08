@@ -12,7 +12,8 @@ public class GameSessionDto {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private List<String> playerIds;
-    private List<UserDto> players; // Expanded player details
+    private List<GameSessionPlayerDto> players; // Expanded player details with status
     private double sessionScore;
     private LocalDateTime createdAt;
+    private String status;
 }

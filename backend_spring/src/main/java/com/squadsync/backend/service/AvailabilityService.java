@@ -20,6 +20,7 @@ public class AvailabilityService {
     private final AvailabilitySlotRepository slotRepository;
     private final UserRepository userRepository;
     private final GameRepository gameRepository;
+    private final MatchmakingService matchmakingService;
 
     public List<AvailabilitySlotDto> getUserSlots(String userId) {
         return slotRepository.findByUserId(userId).stream()
@@ -43,6 +44,20 @@ public class AvailabilityService {
         }
 
         slotRepository.save(slot);
+
+        if (dto.getPreferences() != null && !dto.getPreferences().isEmpty()) {
+            for (com.squadsync.backend.dto.PreferenceDto prefDto : dto.getPreferences()) {
+                com.squadsync.backend.model.AvailabilityGamePreference pref = new com.squadsync.backend.model.AvailabilityGamePreference();
+                pref.setAvailabilitySlot(slot);
+                pref.setGame(gameRepository.findById(prefDto.getGameId())
+                        .orElseThrow(() -> new RuntimeException("Game not found")));
+                pref.setWeight(prefDto.getWeight());
+                slot.getPreferences().add(pref);
+            }
+            slotRepository.save(slot);
+        }
+
+        matchmakingService.runMatchmaking(); // Trigger matchmaking
         return mapToDto(slot);
     }
 
@@ -54,7 +69,21 @@ public class AvailabilityService {
             throw new RuntimeException("Unauthorized");
         }
 
+        // Find overlapping sessions for this user
+        List<com.squadsync.backend.model.GameSession> sessions = matchmakingService.findSessionsForUser(userId);
+
+        for (com.squadsync.backend.model.GameSession session : sessions) {
+            // Check if session overlaps with the slot being deleted
+            if (session.getStartTime().isBefore(slot.getEndTime()) &&
+                    slot.getStartTime().isBefore(session.getEndTime())) {
+
+                // Remove player from session
+                matchmakingService.removePlayerFromSession(session.getId(), userId);
+            }
+        }
+
         slotRepository.delete(slot);
+        matchmakingService.runMatchmaking(); // Trigger matchmaking
     }
 
     private AvailabilitySlotDto mapToDto(AvailabilitySlot slot) {

@@ -20,6 +20,7 @@ public class PreferenceService {
     private final UserGamePreferenceRepository preferenceRepository;
     private final UserRepository userRepository;
     private final GameRepository gameRepository;
+    private final MatchmakingService matchmakingService;
 
     public List<PreferenceDto> getUserPreferences(String userId) {
         return preferenceRepository.findByUserId(userId).stream()
@@ -41,6 +42,7 @@ public class PreferenceService {
         preference.setWeight(dto.getWeight());
 
         preferenceRepository.save(preference);
+        matchmakingService.runMatchmaking(); // Trigger matchmaking
         return mapToDto(preference);
     }
 
