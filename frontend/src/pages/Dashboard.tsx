@@ -14,7 +14,7 @@ import {
     Modal,
     Radio,
 } from '@mantine/core';
-import { IconRefresh, IconCalendar, IconUsers, IconCheck, IconX, IconClock } from '@tabler/icons-react';
+import { IconRefresh, IconCalendar, IconUsers, IconCheck, IconX, IconClock, IconStar } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { matchmakingAPI, sessionsAPI, availabilityAPI } from '../lib/api';
 import { format } from 'date-fns';
@@ -403,6 +403,11 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                                 return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
                             })()}
                         </Badge>
+                    </Group>
+
+                    <Group gap="xs" mb={4}>
+                        <IconStar size={16} />
+                        <Text size="sm">Score: {session.sessionScore}</Text>
                     </Group>
 
                     <Group gap="xs">

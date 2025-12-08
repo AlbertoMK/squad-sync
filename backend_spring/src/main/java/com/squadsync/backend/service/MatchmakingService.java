@@ -246,7 +246,14 @@ public class MatchmakingService {
             Set<String> currentIds = new HashSet<>(current.getSlotIds());
             Set<String> nextIds = new HashSet<>(next.getSlotIds());
 
-            if (current.endTime.equals(next.startTime) && currentIds.equals(nextIds)) {
+            boolean sameUsers = currentIds.equals(nextIds);
+            boolean contiguous = current.endTime.equals(next.startTime);
+
+            // Calculate potential new duration
+            long potentialDuration = java.time.Duration.between(current.startTime, next.endTime).toMinutes();
+            boolean durationWithinLimit = potentialDuration <= 240; // Max 4 hours
+
+            if (contiguous && sameUsers && durationWithinLimit) {
                 // Merge
                 current.endTime = next.endTime;
             } else {
