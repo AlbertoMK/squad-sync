@@ -1,0 +1,120 @@
+package com.squadsync.backend.service;
+
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PostConstruct;
+
+@Service
+public class DiscordBotService {
+
+    @Value("${discord.bot.token}")
+    private String botToken;
+
+    @Value("${discord.bot.channel-id}")
+    private String defaultChannelId;
+
+    private JDA jda;
+
+    @PostConstruct
+    public void init() {
+        if ("DUMMY_TOKEN".equals(botToken)) {
+            System.out.println("Discord Bot Token is DUMMY_TOKEN. Bot will not start.");
+            return;
+        }
+        try {
+            jda = JDABuilder.createDefault(botToken).build();
+            jda.awaitReady();
+            System.out.println("Discord Bot started successfully!");
+        } catch (Exception e) {
+            System.err.println("Failed to start Discord Bot: " + e.getMessage());
+        }
+    }
+
+    public void sendMatchmakingUpdates(java.util.List<com.squadsync.backend.model.GameSession> sessions) {
+        if (jda == null) {
+            System.out.println("JDA is not initialized. Cannot send updates.");
+            return;
+        }
+        if (sessions == null || sessions.isEmpty()) {
+            System.out.println("No sessions to report.");
+            return;
+        }
+
+        TextChannel channel = jda.getTextChannelById(defaultChannelId); // Use the configured channel
+        if (channel == null) {
+            System.err.println("Channel not found: " + defaultChannelId); // Retry lookup if null? mostly likely config
+                                                                          // error
+            return;
+        }
+
+        for (com.squadsync.backend.model.GameSession session : sessions) {
+            net.dv8tion.jda.api.EmbedBuilder embed = new net.dv8tion.jda.api.EmbedBuilder();
+
+            // Color based on status
+            if (session.getStatus() == com.squadsync.backend.model.GameSession.SessionStatus.CONFIRMED) {
+                embed.setColor(java.awt.Color.GREEN);
+                embed.setTitle("✅ Sesión Confirmada: " + session.getGame().getTitle());
+            } else {
+                embed.setColor(java.awt.Color.YELLOW);
+                embed.setTitle("⚠️ Sesión Preliminar: " + session.getGame().getTitle());
+            }
+
+            // Description / Fields
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm");
+            embed.addField("Fecha de Inicio", session.getStartTime().format(formatter), true);
+
+            long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
+            embed.addField("Duración", durationMinutes + " minutos", true);
+
+            int playerCount = session.getPlayers().size();
+            embed.addField("Jugadores", String.valueOf(playerCount), true);
+
+            embed.setFooter("ID: " + session.getId());
+            embed.setTimestamp(java.time.Instant.now());
+
+            channel.sendMessageEmbeds(embed.build()).queue();
+            System.out.println("Sent update for session: " + session.getId());
+        }
+    }
+
+    public void sendPreliminarySessionNotifications(java.util.List<com.squadsync.backend.model.GameSession> sessions) {
+        if (jda == null)
+            return;
+        if (sessions == null || sessions.isEmpty())
+            return;
+
+        TextChannel channel = jda.getTextChannelById(defaultChannelId);
+        if (channel == null) {
+            System.err.println("Channel not found: " + defaultChannelId);
+            return;
+        }
+
+        for (com.squadsync.backend.model.GameSession session : sessions) {
+            net.dv8tion.jda.api.EmbedBuilder embed = new net.dv8tion.jda.api.EmbedBuilder();
+
+            // Orange for Preliminary
+            embed.setColor(java.awt.Color.ORANGE);
+            embed.setTitle("⚠️ Sesión Preliminar (Comienza pronto): " + session.getGame().getTitle());
+
+            // Description / Fields
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm");
+            embed.addField("Fecha de Inicio", session.getStartTime().format(formatter), true);
+
+            long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
+            embed.addField("Duración", durationMinutes + " minutos", true);
+
+            int playerCount = session.getPlayers().size();
+            embed.addField("Jugadores actuales", String.valueOf(playerCount), true);
+
+            embed.setFooter("ID: " + session.getId());
+            embed.setTimestamp(java.time.Instant.now());
+
+            channel.sendMessageEmbeds(embed.build()).queue();
+            System.out.println("Sent preliminary notification for session: " + session.getId());
+        }
+    }
+}

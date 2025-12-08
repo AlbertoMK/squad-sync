@@ -35,6 +35,9 @@ public class GameSession {
 
     private double sessionScore;
 
+    @Column(nullable = false)
+    private boolean notified = false;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public enum SessionStatus {

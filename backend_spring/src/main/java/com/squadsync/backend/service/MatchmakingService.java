@@ -25,6 +25,7 @@ public class MatchmakingService {
     private final GameSessionRepository sessionRepository;
 
     private final GameSessionService gameSessionService;
+    private final DiscordBotService discordBotService;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
     private static final int MAX_SESSION_DURATION_MINUTES = 240;
@@ -186,6 +187,27 @@ public class MatchmakingService {
         log.info("Selected {} sessions", selectedSessions.size());
         List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
 
+        // Notify Discord about confirmed sessions
+        List<GameSession> allConfirmedSessions = new ArrayList<>(confirmedSessions);
+        for (GameSession session : savedSessions) {
+            if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.CONFIRMED) {
+                allConfirmedSessions.add(session);
+            }
+        }
+
+        if (!allConfirmedSessions.isEmpty()) {
+            try {
+                discordBotService.sendMatchmakingUpdates(allConfirmedSessions);
+            } catch (Exception e) {
+                log.error("Failed to send Discord updates", e);
+            }
+        }
+
+        // Notify Discord about PRELIMINARY sessions starting soon (< 2h)
+        List<GameSession> allProcessedSessions = new ArrayList<>(savedSessions);
+
+        checkAndNotifyPreliminary(allProcessedSessions);
+
         // Result construction
         List<GameSessionDto> result = new ArrayList<>();
         result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
@@ -195,6 +217,44 @@ public class MatchmakingService {
                 savedSessions.size());
 
         return result;
+    }
+
+    private void checkAndNotifyPreliminary(List<GameSession> sessions) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime twoHoursLater = now.plusHours(2);
+        List<GameSession> toNotify = new ArrayList<>();
+
+        for (GameSession session : sessions) {
+            if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.PRELIMINARY) {
+                if (!session.isNotified()) {
+                    if (session.getStartTime().isAfter(now) && session.getStartTime().isBefore(twoHoursLater)) {
+                        toNotify.add(session);
+                    }
+                }
+            }
+        }
+
+        if (!toNotify.isEmpty()) {
+            try {
+                discordBotService.sendPreliminarySessionNotifications(toNotify);
+                // Mark as notified
+                for (GameSession s : toNotify) {
+                    s.setNotified(true);
+                }
+                sessionRepository.saveAll(toNotify);
+            } catch (Exception e) {
+                log.error("Failed to send Preliminary notifications", e);
+            }
+        }
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 1,31 * * * *")
+    public void checkUpcomingPreliminarySessions() {
+        log.info("Running scheduled check for upcoming preliminary sessions...");
+        LocalDateTime now = LocalDateTime.now();
+        List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
+
+        checkAndNotifyPreliminary(activeSessions);
     }
 
     private List<AvailabilitySlot> filterAvailableSlots(List<AvailabilitySlot> slots,

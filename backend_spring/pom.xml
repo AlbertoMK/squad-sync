@@ -68,6 +68,12 @@
             <version>0.11.5</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Discord JDA -->
+        <dependency>
+            <groupId>net.dv8tion</groupId>
+            <artifactId>JDA</artifactId>
+            <version>5.0.0-beta.18</version> 
+        </dependency>
 	</dependencies>
 
 	<build>
