@@ -27,6 +27,10 @@ public class MatchmakingService {
     private final GameSessionService gameSessionService;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
+    private static final int MAX_SESSION_DURATION_MINUTES = 240;
+    private static final int MIN_SESSION_DURATION_MINUTES = 60;
+    private static final int DEFAULT_PREFERENCE_WEIGHT = 5;
+    private static final int PARTICIPATION_BONUS_MULTIPLIER = 2;
 
     @Transactional
     public List<GameSessionDto> runMatchmaking() {
@@ -34,72 +38,36 @@ public class MatchmakingService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Fetch all active sessions
+        // Fetch and categorize sessions
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
-
         List<GameSession> confirmedSessions = new ArrayList<>();
         List<GameSession> preliminarySessions = new ArrayList<>();
 
         for (GameSession session : activeSessions) {
-            GameSession.SessionStatus status = gameSessionService.getSessionStatus(session);
-            if (status == GameSession.SessionStatus.CONFIRMED) {
+            if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.CONFIRMED) {
                 confirmedSessions.add(session);
             } else {
                 preliminarySessions.add(session);
             }
         }
 
-        // 1. Delete all PRELIMINARY sessions
+        // Clean up preliminary sessions
         sessionRepository.deleteAll(preliminarySessions);
         log.info("Deleted {} PRELIMINARY sessions", preliminarySessions.size());
 
-        // 2. Use CONFIRMED sessions to exclude overlapping players
-        Set<String> busyUserIds = new HashSet<>();
-        for (GameSession session : confirmedSessions) {
-            session.getPlayers().forEach(p -> busyUserIds.add(p.getUser().getId()));
-        }
-        log.info("Found {} confirmed sessions, excluding {} users", confirmedSessions.size(), busyUserIds.size());
-
         List<AvailabilitySlot> slots = slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
-
         if (slots.isEmpty()) {
-            log.info("No availability slots found");
             return Collections.emptyList();
         }
 
-        // Filter out slots for users who are already in a confirmed session
-        List<AvailabilitySlot> availableSlots = new ArrayList<>();
-        for (AvailabilitySlot slot : slots) {
-            boolean isBusy = false;
-            for (GameSession session : confirmedSessions) {
-                // Check if this user is in this session
-                boolean userInSession = session.getPlayers().stream()
-                        .anyMatch(p -> p.getUser().getId().equals(slot.getUser().getId()));
+        // Filter valid slots (not overlapping with confirmed sessions)
+        List<AvailabilitySlot> availableSlots = filterAvailableSlots(slots, confirmedSessions);
+        log.info("Filtered down to {} available slots", availableSlots.size());
 
-                if (userInSession) {
-                    // Check time overlap
-                    if (slot.getStartTime().isBefore(session.getEndTime()) &&
-                            session.getStartTime().isBefore(slot.getEndTime())) {
-                        isBusy = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!isBusy) {
-                availableSlots.add(slot);
-            }
-        }
-
-        log.info("Filtered down to {} available slots after checking confirmed sessions", availableSlots.size());
-
-        List<TimeSlot> overlappingSlots = findOverlappingSlots(availableSlots);
-        List<TimeSlot> viableSlots = overlappingSlots.stream()
-                .filter(slot -> slot.getSlotIds().size() >= MIN_PLAYERS_FOR_SESSION)
-                .collect(Collectors.toList());
-
+        List<TimeSlot> viableSlots = findOverlappingSlots(availableSlots);
         log.info("Found {} viable time slots", viableSlots.size());
 
+        // Generate potential sessions
         List<GameSession> potentialSessions = new ArrayList<>();
         for (TimeSlot slot : viableSlots) {
             GameSession session = createSessionForSlot(slot);
@@ -108,46 +76,23 @@ public class MatchmakingService {
             }
         }
 
-        log.info("Generated {} potential sessions", potentialSessions.size());
-
-        // Conflict Resolution: Sort sessions to prioritize the best ones
+        // Sort sessions by priority: Players > Score > Duration
         potentialSessions.sort((s1, s2) -> {
-            // 1. Player Count (Descending)
             int p1 = s1.getPlayers().size();
             int p2 = s2.getPlayers().size();
             if (p1 != p2)
                 return Integer.compare(p2, p1);
 
-            // 2. Session Score (Descending)
-            if (s1.getSessionScore() != s2.getSessionScore())
+            if (Double.compare(s1.getSessionScore(), s2.getSessionScore()) != 0)
                 return Double.compare(s2.getSessionScore(), s1.getSessionScore());
 
-            // 3. Duration (Descending) - Longer sessions preferred? Or maybe earlier start?
-            // Let's prefer longer sessions as they are harder to schedule
             long d1 = java.time.Duration.between(s1.getStartTime(), s1.getEndTime()).toMinutes();
             long d2 = java.time.Duration.between(s2.getStartTime(), s2.getEndTime()).toMinutes();
             return Long.compare(d2, d1);
         });
 
+        // Select non-conflicting sessions
         List<GameSession> selectedSessions = new ArrayList<>();
-
-        // We need to track which users are "booked" in the new preliminary sessions
-        // to prevent them from being in multiple overlapping preliminary sessions.
-        // Note: A user CAN be in multiple preliminary sessions if they don't overlap.
-        // But here we are iterating through sessions that might overlap in time.
-
-        // Actually, we need to check if the *sessions* overlap in time AND share users.
-        // Or simpler: If a session overlaps in time with an already selected session,
-        // AND they share at least one user, then they are incompatible for that user.
-        // But wait, a user can't be in two places at once.
-        // So if we select Session A (User 1, User 2) at 10:00-11:00.
-        // We cannot select Session B (User 2, User 3) at 10:30-11:30.
-
-        // Strategy: Keep a list of selected sessions. For each candidate, check if it
-        // conflicts
-        // with any already selected session.
-        // Conflict = Time Overlap AND Shared User.
-
         for (GameSession candidate : potentialSessions) {
             boolean conflicts = false;
             for (GameSession selected : selectedSessions) {
@@ -156,24 +101,44 @@ public class MatchmakingService {
                     break;
                 }
             }
-
             if (!conflicts) {
                 selectedSessions.add(candidate);
             }
         }
 
-        log.info("Selected {} non-conflicting sessions", selectedSessions.size());
-
-        // Save selected sessions
+        log.info("Selected {} sessions", selectedSessions.size());
         List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
 
-        // Combine newly created sessions with existing confirmed sessions for the
-        // return value
+        // Result construction
         List<GameSessionDto> result = new ArrayList<>();
         result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
         result.addAll(savedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
 
         return result;
+    }
+
+    private List<AvailabilitySlot> filterAvailableSlots(List<AvailabilitySlot> slots,
+            List<GameSession> confirmedSessions) {
+        List<AvailabilitySlot> availableSlots = new ArrayList<>();
+        for (AvailabilitySlot slot : slots) {
+            boolean isBusy = false;
+            for (GameSession session : confirmedSessions) {
+                boolean userInSession = session.getPlayers().stream()
+                        .anyMatch(p -> p.getUser().getId().equals(slot.getUser().getId()));
+
+                if (userInSession) {
+                    if (slot.getStartTime().isBefore(session.getEndTime()) &&
+                            session.getStartTime().isBefore(slot.getEndTime())) {
+                        isBusy = true;
+                        break;
+                    }
+                }
+            }
+            if (!isBusy) {
+                availableSlots.add(slot);
+            }
+        }
+        return availableSlots;
     }
 
     private boolean sessionsOverlap(GameSession s1, GameSession s2) {
@@ -192,7 +157,6 @@ public class MatchmakingService {
     }
 
     private List<TimeSlot> findOverlappingSlots(List<AvailabilitySlot> slots) {
-        // 1. Collect all unique time points
         Set<LocalDateTime> timePoints = new HashSet<>();
         for (AvailabilitySlot slot : slots) {
             timePoints.add(slot.getStartTime());
@@ -201,25 +165,21 @@ public class MatchmakingService {
         List<LocalDateTime> sortedTimePoints = new ArrayList<>(timePoints);
         Collections.sort(sortedTimePoints);
 
-        List<TimeSlot> candidateSlots = new ArrayList<>();
+        List<TimeSlot> atomicSlots = new ArrayList<>();
 
-        // 2. Iterate through atomic intervals
+        // Create atomic intervals
         for (int i = 0; i < sortedTimePoints.size() - 1; i++) {
             LocalDateTime start = sortedTimePoints.get(i);
             LocalDateTime end = sortedTimePoints.get(i + 1);
 
-            // Skip zero-duration intervals
             if (start.equals(end))
                 continue;
 
-            // Find active slots in this interval
-            // A slot is active if slot.start <= start && slot.end >= end
             List<String> activeSlotIds = new ArrayList<>();
             Set<String> activeUserIds = new HashSet<>();
 
             for (AvailabilitySlot slot : slots) {
                 if (!slot.getStartTime().isAfter(start) && !slot.getEndTime().isBefore(end)) {
-                    // Check if user already added (avoid same user multiple slots issue if any)
                     if (!activeUserIds.contains(slot.getUser().getId())) {
                         activeSlotIds.add(slot.getId());
                         activeUserIds.add(slot.getUser().getId());
@@ -228,54 +188,26 @@ public class MatchmakingService {
             }
 
             if (activeSlotIds.size() >= MIN_PLAYERS_FOR_SESSION) {
-                long durationMinutes = java.time.Duration.between(start, end).toMinutes();
-                if (durationMinutes > 240) {
-                    LocalDateTime chunkStart = start;
-                    while (chunkStart.isBefore(end)) {
-                        LocalDateTime chunkEnd = chunkStart.plusMinutes(240);
-                        if (chunkEnd.isAfter(end)) {
-                            chunkEnd = end;
-                        }
-                        if (!chunkStart.equals(chunkEnd)) {
-                            candidateSlots.add(new TimeSlot(chunkStart, chunkEnd, activeSlotIds, activeUserIds));
-                        }
-                        chunkStart = chunkEnd;
-                    }
-                } else {
-                    candidateSlots.add(new TimeSlot(start, end, activeSlotIds, activeUserIds));
-                }
+                atomicSlots.add(new TimeSlot(start, end, activeSlotIds, activeUserIds));
             }
         }
 
-        // 3. Merge consecutive slots with same users
+        // Merge contiguous slots
         List<TimeSlot> mergedSlots = new ArrayList<>();
-        if (candidateSlots.isEmpty())
+        if (atomicSlots.isEmpty())
             return mergedSlots;
 
-        TimeSlot current = candidateSlots.get(0);
-        for (int i = 1; i < candidateSlots.size(); i++) {
-            TimeSlot next = candidateSlots.get(i);
+        TimeSlot current = atomicSlots.get(0);
+        for (int i = 1; i < atomicSlots.size(); i++) {
+            TimeSlot next = atomicSlots.get(i);
 
-            // Check if contiguous and same users
-            Set<String> currentUsers = current.getUserIds();
-            Set<String> nextUsers = next.getUserIds();
-
-            boolean sameUsers = currentUsers.equals(nextUsers);
+            boolean sameUsers = current.getUserIds().equals(next.getUserIds());
             boolean contiguous = current.endTime.equals(next.startTime);
 
-            // Calculate potential new duration
-            long potentialDuration = java.time.Duration.between(current.startTime, next.endTime).toMinutes();
-            boolean durationWithinLimit = potentialDuration <= 240; // Max 4 hours
-
-            if (contiguous && sameUsers && durationWithinLimit) {
-                // Merge
+            if (contiguous && sameUsers) {
+                // Determine merged duration
                 current.endTime = next.endTime;
-                // Note: We don't merge slotIds here, assuming the first slot's preferences are
-                // representative enough
-                // or that strict slot tracking across merge isn't critical for initial invite.
-                // However, for correct preference handling in createSessionForSlot, we ideally
-                // should?
-                // But for now, fixing the fragmentation is the priority.
+                // Note: We don't worry about max duration here, we split later.
             } else {
                 mergedSlots.add(current);
                 current = next;
@@ -283,10 +215,35 @@ public class MatchmakingService {
         }
         mergedSlots.add(current);
 
-        // 4. Filter by duration
-        return mergedSlots.stream()
-                .filter(slot -> java.time.Duration.between(slot.startTime, slot.endTime).toMinutes() >= 60)
-                .collect(Collectors.toList());
+        // Filter and Split by Duration constraints
+        List<TimeSlot> finalSlots = new ArrayList<>();
+        for (TimeSlot slot : mergedSlots) {
+            long duration = java.time.Duration.between(slot.startTime, slot.endTime).toMinutes();
+
+            if (duration < MIN_SESSION_DURATION_MINUTES) {
+                continue;
+            }
+
+            if (duration <= MAX_SESSION_DURATION_MINUTES) {
+                finalSlots.add(slot);
+            } else {
+                // Split large slots
+                LocalDateTime chunkStart = slot.startTime;
+                while (java.time.Duration.between(chunkStart, slot.endTime)
+                        .toMinutes() >= MIN_SESSION_DURATION_MINUTES) {
+                    LocalDateTime chunkEnd = chunkStart.plusMinutes(MAX_SESSION_DURATION_MINUTES);
+                    if (chunkEnd.isAfter(slot.endTime)) {
+                        chunkEnd = slot.endTime;
+                    }
+                    if (java.time.Duration.between(chunkStart, chunkEnd).toMinutes() >= MIN_SESSION_DURATION_MINUTES) {
+                        finalSlots.add(new TimeSlot(chunkStart, chunkEnd, slot.slotIds, slot.userIds));
+                    }
+                    chunkStart = chunkEnd;
+                }
+            }
+        }
+
+        return finalSlots;
     }
 
     private GameSession createSessionForSlot(TimeSlot timeSlot) {
