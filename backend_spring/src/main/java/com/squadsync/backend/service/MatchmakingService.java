@@ -262,7 +262,7 @@ public class MatchmakingService {
             int playerCount = 0;
 
             for (AvailabilitySlot slot : slots) {
-                int weight = 5; // Default
+                int weight = DEFAULT_PREFERENCE_WEIGHT; // Default
 
                 // Check for override
                 Optional<AvailabilityGamePreference> override = slot.getPreferences().stream()
@@ -278,7 +278,7 @@ public class MatchmakingService {
                                     && p.getGame().getId().equals(game.getId()))
                             .findFirst()
                             .map(UserGamePreference::getWeight)
-                            .orElse(5);
+                            .orElse(DEFAULT_PREFERENCE_WEIGHT);
                 }
 
                 if (weight > 0) {
@@ -291,7 +291,7 @@ public class MatchmakingService {
                 continue; // Not enough players for this game
             }
 
-            score += playerCount * 2; // Participation bonus
+            score += playerCount * PARTICIPATION_BONUS_MULTIPLIER; // Participation bonus
 
             gameScores.add(new GameScore(game, score));
         }
@@ -305,7 +305,7 @@ public class MatchmakingService {
         // Filter slots/users that are actually playing (didn't veto)
         List<AvailabilitySlot> participatingSlots = new ArrayList<>();
         for (AvailabilitySlot slot : slots) {
-            int weight = 5;
+            int weight = DEFAULT_PREFERENCE_WEIGHT;
             Optional<AvailabilityGamePreference> override = slot.getPreferences().stream()
                     .filter(p -> p.getGame().getId().equals(bestGame.game.getId()))
                     .findFirst();
@@ -317,7 +317,7 @@ public class MatchmakingService {
                                 && p.getGame().getId().equals(bestGame.game.getId()))
                         .findFirst()
                         .map(UserGamePreference::getWeight)
-                        .orElse(5);
+                        .orElse(DEFAULT_PREFERENCE_WEIGHT);
             }
 
             if (weight > 0) {
