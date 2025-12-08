@@ -1,13 +1,14 @@
 services:
+  # Database Service
   mysql:
     image: mysql:8.0
     container_name: squadsync-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: squadsync
-      MYSQL_USER: squadsync
-      MYSQL_PASSWORD: squadsync_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-squadsync}
+      MYSQL_USER: ${MYSQL_USER:-squadsync}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-squadsync_password}
     ports:
       - "3306:3306"
     volumes:
@@ -16,6 +17,54 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
       retries: 10
+    networks:
+      - squadsync-net
+
+  # Backend Service (Spring Boot)
+  backend:
+    build: ./backend_spring
+    container_name: squadsync-backend
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      DATABASE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-squadsync}?allowPublicKeyRetrieval=true&useSSL=false
+      DATABASE_USERNAME: ${MYSQL_USER:-squadsync}
+      DATABASE_PASSWORD: ${MYSQL_PASSWORD:-squadsync_password}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - squadsync-net
+
+  # Frontend Service (React + Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=/
+    container_name: squadsync-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - squadsync-net
+
+  # Cloudflare Tunnel
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: squadsync-tunnel
+    restart: unless-stopped
+    command: tunnel --url http://frontend:80
+    networks:
+      - squadsync-net
 
 volumes:
   mysql_data:
+
+networks:
+  squadsync-net:
+    driver: bridge
