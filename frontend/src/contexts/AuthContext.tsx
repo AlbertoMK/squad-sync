@@ -7,13 +7,15 @@ interface User {
     email: string;
     role: string;
     avatarColor: string;
+    discordUsername?: string;
 }
 
 interface AuthContextType {
     user: User | null;
     token: string | null;
     login: (email: string, password: string) => Promise<void>;
-    register: (username: string, email: string, password: string, avatarColor?: string) => Promise<void>;
+    register: (username: string, email: string, password: string, avatarColor?: string, discordUsername?: string) => Promise<void>;
+    updateProfile: (data: Partial<User>) => Promise<void>;
     logout: () => void;
     isLoading: boolean;
 }
@@ -66,9 +68,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
-    const register = async (username: string, email: string, password: string, avatarColor?: string) => {
+    const register = async (username: string, email: string, password: string, avatarColor?: string, discordUsername?: string) => {
         try {
-            const response = await authAPI.register({ username, email, password, avatarColor });
+            const response = await authAPI.register({ username, email, password, avatarColor, discordUsername });
             const { user: userData, token: userToken } = response.data;
 
             setUser(userData);
@@ -82,6 +84,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
+    const updateProfile = async (data: Partial<User>) => {
+        try {
+            // Need to implement updateProfile in API lib first or use direct call?
+            // Assuming authAPI has updateProfile or we add it. 
+            // For now, let's assume authAPI has generic request ability or we add it to api lib.
+            // Wait, I should check api lib. But I can't read it in this turn.
+            // I'll assume standard Axios pattern or modify API lib in next turn if needed.
+            // Actually, I should probably check API lib. But I'll blindly trust Axios instance usage for now to be efficient
+            // and fix if compilation fails.
+            // Actually, better to just implement it assuming the authAPI object exists and I'll update it if needed.
+            const response = await authAPI.updateProfile(data);
+            const updatedUser = response.data;
+            setUser(updatedUser);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+        } catch (error) {
+            console.error('Update profile error:', error);
+            throw error;
+        }
+    };
+
     const logout = () => {
         setUser(null);
         setToken(null);
@@ -90,7 +112,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, login, register, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, token, login, register, updateProfile, logout, isLoading }}>
             {children}
         </AuthContext.Provider>
     );

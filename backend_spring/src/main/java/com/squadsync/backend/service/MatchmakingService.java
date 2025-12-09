@@ -227,7 +227,7 @@ public class MatchmakingService {
         for (GameSession session : sessions) {
             if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.PRELIMINARY) {
                 if (!session.isNotified()) {
-                    if (session.getStartTime().isAfter(now) && session.getStartTime().isBefore(twoHoursLater)) {
+                    if (session.getStartTime().isBefore(twoHoursLater) && session.getEndTime().isAfter(now)) {
                         toNotify.add(session);
                     }
                 }

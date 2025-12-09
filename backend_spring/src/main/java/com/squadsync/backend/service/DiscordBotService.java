@@ -76,7 +76,11 @@ public class DiscordBotService {
             embed.setFooter("ID: " + session.getId());
             embed.setTimestamp(java.time.Instant.now());
 
-            channel.sendMessageEmbeds(embed.build()).queue();
+            String messageContent = "";
+            if (session.getStatus() == com.squadsync.backend.model.GameSession.SessionStatus.CONFIRMED) {
+                messageContent = "@here";
+            }
+            channel.sendMessage(messageContent).setEmbeds(embed.build()).queue();
             System.out.println("Sent update for session: " + session.getId());
         }
     }
@@ -113,7 +117,20 @@ public class DiscordBotService {
             embed.setFooter("ID: " + session.getId());
             embed.setTimestamp(java.time.Instant.now());
 
-            channel.sendMessageEmbeds(embed.build()).queue();
+            // Build mentions string
+            StringBuilder mentions = new StringBuilder();
+            for (com.squadsync.backend.model.GameSessionPlayer player : session.getPlayers()) {
+                if (player.getUser().getDiscordUsername() != null && !player.getUser().getDiscordUsername().isBlank()) {
+                    mentions.append("@").append(player.getUser().getDiscordUsername()).append(" ");
+                }
+            }
+
+            String messageContent = mentions.toString().trim();
+            if (messageContent.isEmpty()) {
+                channel.sendMessageEmbeds(embed.build()).queue();
+            } else {
+                channel.sendMessage(messageContent).setEmbeds(embed.build()).queue();
+            }
             System.out.println("Sent preliminary notification for session: " + session.getId());
         }
     }

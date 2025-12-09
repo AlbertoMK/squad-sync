@@ -4,6 +4,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconLogout, IconUser, IconCalendar, IconDeviceGamepad2, IconHome } from '@tabler/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import NotificationBanner from '../NotificationBanner';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -93,7 +94,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 })}
             </AppShell.Navbar>
 
-            <AppShell.Main>{children}</AppShell.Main>
+            <AppShell.Main>
+                <NotificationBanner />
+                {children}
+            </AppShell.Main>
         </AppShell>
     );
 }

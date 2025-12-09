@@ -30,6 +30,9 @@ public class AuthService {
         var user = new User();
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
+        if (request.getDiscordUsername() != null && !request.getDiscordUsername().isBlank()) {
+            user.setDiscordUsername(request.getDiscordUsername());
+        }
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setAvatarColor(request.getAvatarColor() != null ? request.getAvatarColor() : "#3b82f6");
@@ -66,6 +69,19 @@ public class AuthService {
         return new AuthDto.AuthResponse(jwtToken, mapToDto(user));
     }
 
+    public UserDto updateProfile(String email, UserDto updateDto) {
+        var user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (updateDto.getDiscordUsername() != null) {
+            user.setDiscordUsername(updateDto.getDiscordUsername());
+        }
+        // Add other updatable fields here if needed in future
+
+        userRepository.save(user);
+        return mapToDto(user);
+    }
+
     public UserDto getCurrentUser(String email) {
         var user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -77,6 +93,7 @@ public class AuthService {
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
+        dto.setDiscordUsername(user.getDiscordUsername());
         dto.setRole(user.getRole());
         dto.setAvatarColor(user.getAvatarColor());
         dto.setCreatedAt(user.getCreatedAt());

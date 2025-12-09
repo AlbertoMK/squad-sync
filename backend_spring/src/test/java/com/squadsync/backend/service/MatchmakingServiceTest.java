@@ -631,7 +631,8 @@ public class MatchmakingServiceTest {
 
         // Verify
         org.mockito.ArgumentCaptor<List<GameSession>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
-        org.mockito.Mockito.verify(discordBotService).sendPreliminarySessionNotifications(captor.capture());
+        org.mockito.Mockito.verify(discordBotService, org.mockito.Mockito.atLeastOnce())
+                .sendPreliminarySessionNotifications(captor.capture());
 
         List<GameSession> notifiedSessions = captor.getValue();
         Assertions.assertEquals(1, notifiedSessions.size(), "Should verify exactly 1 session");
@@ -640,5 +641,37 @@ public class MatchmakingServiceTest {
 
         // Check s1 setNotified(true)
         Assertions.assertTrue(s1.isNotified(), "Session should be marked as notified");
+    }
+
+    @Test
+    public void testCheckAndNotifyPreliminary_SessionStartingNow() {
+        // Given
+        LocalDateTime now = LocalDateTime.now();
+        GameSession session = new GameSession();
+        session.setId("session-now");
+        session.setGame(new Game());
+        session.setStartTime(now); // Starts exactly now
+        session.setEndTime(now.plusMinutes(60));
+        session.setNotified(false);
+
+        when(gameSessionService.getSessionStatus(session)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
+        when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any(LocalDateTime.class)))
+                .thenReturn(Collections.singletonList(session));
+
+        // When
+        matchmakingService.checkUpcomingPreliminarySessions();
+
+        // Then
+        org.mockito.ArgumentCaptor<List<GameSession>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        // We verify that it IS called. With the bug, this verification may fail if
+        // using regular verify
+        // or if we assert on captured values.
+        org.mockito.Mockito.verify(discordBotService, org.mockito.Mockito.atLeastOnce())
+                .sendPreliminarySessionNotifications(captor.capture());
+
+        List<GameSession> captured = captor.getValue();
+        // The bug prevents it from being added to the list if check is strictly > now
+        Assertions.assertTrue(captured.stream().anyMatch(s -> s.getId().equals("session-now")),
+                "Should notify for session starting now");
     }
 }

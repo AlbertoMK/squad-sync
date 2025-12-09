@@ -19,6 +19,7 @@ export default function Register() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [avatarColor, setAvatarColor] = useState('#3b82f6');
+    const [discordUsername, setDiscordUsername] = useState('');
     const [loading, setLoading] = useState(false);
     const { register } = useAuth();
     const navigate = useNavigate();
@@ -28,7 +29,7 @@ export default function Register() {
         setLoading(true);
 
         try {
-            await register(username, email, password, avatarColor);
+            await register(username, email, password, avatarColor, discordUsername);
             notifications.show({
                 title: '¡Cuenta creada!',
                 message: 'Registro exitoso',
@@ -85,6 +86,14 @@ export default function Register() {
                             placeholder="Elige tu color"
                             value={avatarColor}
                             onChange={setAvatarColor}
+                        />
+
+                        <TextInput
+                            label="Usuario de Discord (Opcional)"
+                            placeholder="usuario354"
+                            description="Para notificarte cuando se armen partidas"
+                            value={discordUsername}
+                            onChange={(e) => setDiscordUsername(e.target.value)}
                         />
 
                         <Button type="submit" fullWidth loading={loading}>

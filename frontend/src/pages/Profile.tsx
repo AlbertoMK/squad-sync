@@ -1,8 +1,38 @@
-import { Container, Title, Card, Stack, Text, Group, Avatar } from '@mantine/core';
+import { Container, Title, Card, Stack, Text, Group, Avatar, TextInput, Button } from '@mantine/core';
 import { useAuth } from '../contexts/AuthContext';
+import { useState, useEffect } from 'react';
+import { notifications } from '@mantine/notifications';
 
 export default function Profile() {
-    const { user } = useAuth();
+    const { user, updateProfile } = useAuth();
+    const [discordUsername, setDiscordUsername] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (user?.discordUsername) {
+            setDiscordUsername(user.discordUsername);
+        }
+    }, [user]);
+
+    const handleUpdate = async () => {
+        setLoading(true);
+        try {
+            await updateProfile({ discordUsername });
+            notifications.show({
+                title: 'Perfil actualizado',
+                message: 'Tu usuario de Discord ha sido guardado',
+                color: 'green',
+            });
+        } catch (error) {
+            notifications.show({
+                title: 'Error',
+                message: 'No se pudo actualizar el perfil',
+                color: 'red',
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     if (!user) return null;
 
@@ -44,6 +74,20 @@ export default function Profile() {
                                 <Text size="sm">{user.avatarColor}</Text>
                             </Group>
                         </div>
+
+                        <TextInput
+                            label="Usuario de Discord"
+                            placeholder="usuario354"
+                            description="Para notificarte cuando se armen partidas"
+                            value={discordUsername}
+                            onChange={(e) => setDiscordUsername(e.target.value)}
+                        />
+
+                        <Group justify="flex-end">
+                            <Button onClick={handleUpdate} loading={loading}>
+                                Guardar Cambios
+                            </Button>
+                        </Group>
                     </Stack>
                 </Card>
             </Stack>

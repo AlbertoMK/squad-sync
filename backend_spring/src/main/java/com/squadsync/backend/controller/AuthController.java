@@ -30,4 +30,10 @@ public class AuthController {
     public ResponseEntity<UserDto> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(authService.getCurrentUser(userDetails.getUsername()));
     }
+
+    @PutMapping("/me")
+    public ResponseEntity<UserDto> updateProfile(@AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody UserDto userDto) {
+        return ResponseEntity.ok(authService.updateProfile(userDetails.getUsername(), userDto));
+    }
 }
