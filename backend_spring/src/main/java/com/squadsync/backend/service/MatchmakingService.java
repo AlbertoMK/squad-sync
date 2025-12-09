@@ -46,7 +46,6 @@ public class MatchmakingService {
     private final GameSessionRepository sessionRepository;
 
     private final GameSessionService gameSessionService;
-    // private final DiscordBotService discordBotService; // Decoupled via Events
     private final ApplicationEventPublisher eventPublisher;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
@@ -61,11 +60,56 @@ public class MatchmakingService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Fetch and categorize sessions
+        // 1. Fetch and categorize sessions
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
         List<GameSession> confirmedSessions = new ArrayList<>();
         List<GameSession> preliminarySessions = new ArrayList<>();
+        categorizeSessions(activeSessions, confirmedSessions, preliminarySessions);
 
+        // 2. Fetch and filter availability slots
+        List<AvailabilitySlot> slots = slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
+        if (slots.isEmpty()) {
+            handleNoAvailability(preliminarySessions);
+            return mapSessionsToDto(confirmedSessions);
+        }
+
+        List<AvailabilitySlot> availableSlots = filterAvailableSlots(slots, confirmedSessions);
+        log.info("Filtered down to {} available slots", availableSlots.size());
+
+        List<TimeSlot> viableSlots = findOverlappingSlots(availableSlots);
+        log.info("Found {} viable time slots", viableSlots.size());
+
+        // 3. Generate potential sessions
+        List<GameSession> potentialSessions = generatePotentialSessions(viableSlots, preliminarySessions);
+
+        // 4. Sort sessions by priority
+        sortSessionsByPriority(potentialSessions);
+
+        // 5. Select non-conflicting sessions
+        List<GameSession> selectedSessions = selectNonConflictingSessions(potentialSessions);
+
+        // 6. Cleanup obsolete sessions
+        cleanupObsoleteSessions(preliminarySessions, selectedSessions);
+
+        // 7. Save and Notify
+        log.info("Selected {} sessions", selectedSessions.size());
+        List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
+
+        notifySessions(confirmedSessions, savedSessions);
+
+        // 8. Construct Result
+        List<GameSessionDto> result = new ArrayList<>();
+        result.addAll(mapSessionsToDto(confirmedSessions));
+        result.addAll(mapSessionsToDto(savedSessions));
+
+        log.info("Returning {} sessions ({} confirmed + {} saved)", result.size(), confirmedSessions.size(),
+                savedSessions.size());
+
+        return result;
+    }
+
+    private void categorizeSessions(List<GameSession> activeSessions, List<GameSession> confirmedSessions,
+            List<GameSession> preliminarySessions) {
         for (GameSession session : activeSessions) {
             if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.CONFIRMED) {
                 confirmedSessions.add(session);
@@ -73,30 +117,23 @@ public class MatchmakingService {
                 preliminarySessions.add(session);
             }
         }
+    }
 
+    private void handleNoAvailability(List<GameSession> preliminarySessions) {
+        // No availability, so no *new* sessions can be formed.
+        // Existing preliminary sessions rely on availability, so they are likely
+        // invalid.
+        sessionRepository.deleteAll(preliminarySessions);
+    }
+
+    private List<GameSession> generatePotentialSessions(List<TimeSlot> viableSlots,
+            List<GameSession> preliminarySessions) {
         // Map preliminary sessions by signature for reuse
         Map<String, GameSession> existingSessionsMap = new HashMap<>();
         for (GameSession session : preliminarySessions) {
             existingSessionsMap.put(generateSessionSignature(session), session);
         }
 
-        List<AvailabilitySlot> slots = slotRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
-        if (slots.isEmpty()) {
-            // No availability, so no *new* sessions can be formed.
-            // Existing preliminary sessions rely on availability, so they are likely
-            // invalid.
-            sessionRepository.deleteAll(preliminarySessions);
-            return confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList());
-        }
-
-        // Filter valid slots (not overlapping with confirmed sessions)
-        List<AvailabilitySlot> availableSlots = filterAvailableSlots(slots, confirmedSessions);
-        log.info("Filtered down to {} available slots", availableSlots.size());
-
-        List<TimeSlot> viableSlots = findOverlappingSlots(availableSlots);
-        log.info("Found {} viable time slots", viableSlots.size());
-
-        // Generate potential sessions
         List<GameSession> potentialSessions = new ArrayList<>();
         for (TimeSlot slot : viableSlots) {
             GameSession candidateRequest = createSessionForSlot(slot);
@@ -105,57 +142,48 @@ public class MatchmakingService {
                 String signature = generateSessionSignature(candidateRequest);
 
                 if (existingSessionsMap.containsKey(signature)) {
-                    // Reuse existing session
-                    GameSession existingSession = existingSessionsMap.get(signature);
-
-                    // Sync players: Update existingSession players to match candidateRequest
-                    // We want to keep existing players (to preserve status) if they are still in
-                    // the candidate
-                    // We want to add new players
-                    // We want to remove players that are no longer in the candidate
-
-                    Set<String> newCandidateUserIds = candidateRequest.getPlayers().stream()
-                            .map(p -> p.getUser().getId())
-                            .collect(Collectors.toSet());
-
-                    // 1. Remove players not in the new candidate list
-                    existingSession.getPlayers().removeIf(p -> !newCandidateUserIds.contains(p.getUser().getId()));
-
-                    // 2. Add players that are in candidate but not in existing
-                    // Create a map for faster lookup of existing players
-                    Map<String, GameSessionPlayer> existingPlayersMap = existingSession.getPlayers().stream()
-                            .collect(Collectors.toMap(p -> p.getUser().getId(), p -> p));
-
-                    for (GameSessionPlayer candidatePlayer : candidateRequest.getPlayers()) {
-                        String userId = candidatePlayer.getUser().getId();
-                        if (existingPlayersMap.containsKey(userId)) {
-                            // Player exists. Check if we need to revive them (e.g. they declined before but
-                            // are
-                            // available now)
-                            GameSessionPlayer existingPlayer = existingPlayersMap.get(userId);
-                            if (existingPlayer.getStatus() == GameSessionPlayer.SessionPlayerStatus.REJECTED) {
-                                existingPlayer.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
-                            }
-                        } else {
-                            // This is a new player for this session
-                            candidatePlayer.setSession(existingSession); // Repoint to existing session
-                            existingSession.getPlayers().add(candidatePlayer);
-                        }
-                    }
-
-                    // Sync score
-                    existingSession.setSessionScore(candidateRequest.getSessionScore());
-
-                    potentialSessions.add(existingSession);
+                    potentialSessions.add(updateExistingSession(existingSessionsMap.get(signature), candidateRequest));
                 } else {
-                    // New session entirely
                     potentialSessions.add(candidateRequest);
                 }
             }
         }
+        return potentialSessions;
+    }
 
-        // Sort sessions by priority: Players > Score > Duration
-        potentialSessions.sort((s1, s2) -> {
+    private GameSession updateExistingSession(GameSession existingSession, GameSession candidateRequest) {
+        // Sync players: Update existingSession players to match candidateRequest
+        Set<String> newCandidateUserIds = candidateRequest.getPlayers().stream()
+                .map(p -> p.getUser().getId())
+                .collect(Collectors.toSet());
+
+        // 1. Remove players not in the new candidate list
+        existingSession.getPlayers().removeIf(p -> !newCandidateUserIds.contains(p.getUser().getId()));
+
+        // 2. Add players that are in candidate but not in existing
+        Map<String, GameSessionPlayer> existingPlayersMap = existingSession.getPlayers().stream()
+                .collect(Collectors.toMap(p -> p.getUser().getId(), p -> p));
+
+        for (GameSessionPlayer candidatePlayer : candidateRequest.getPlayers()) {
+            String userId = candidatePlayer.getUser().getId();
+            if (existingPlayersMap.containsKey(userId)) {
+                GameSessionPlayer existingPlayer = existingPlayersMap.get(userId);
+                if (existingPlayer.getStatus() == GameSessionPlayer.SessionPlayerStatus.REJECTED) {
+                    existingPlayer.setStatus(GameSessionPlayer.SessionPlayerStatus.PENDING);
+                }
+            } else {
+                candidatePlayer.setSession(existingSession);
+                existingSession.getPlayers().add(candidatePlayer);
+            }
+        }
+
+        // Sync score
+        existingSession.setSessionScore(candidateRequest.getSessionScore());
+        return existingSession;
+    }
+
+    private void sortSessionsByPriority(List<GameSession> sessions) {
+        sessions.sort((s1, s2) -> {
             int p1 = s1.getPlayers().size();
             int p2 = s2.getPlayers().size();
             if (p1 != p2)
@@ -168,8 +196,9 @@ public class MatchmakingService {
             long d2 = Duration.between(s2.getStartTime(), s2.getEndTime()).toMinutes();
             return Long.compare(d2, d1);
         });
+    }
 
-        // Select non-conflicting sessions
+    private List<GameSession> selectNonConflictingSessions(List<GameSession> potentialSessions) {
         List<GameSession> selectedSessions = new ArrayList<>();
         for (GameSession candidate : potentialSessions) {
             boolean conflicts = false;
@@ -183,8 +212,10 @@ public class MatchmakingService {
                 selectedSessions.add(candidate);
             }
         }
+        return selectedSessions;
+    }
 
-        // Identify sessions to delete (were preliminary but not selected in this round)
+    private void cleanupObsoleteSessions(List<GameSession> preliminarySessions, List<GameSession> selectedSessions) {
         Set<String> selectedSessionIds = selectedSessions.stream()
                 .map(GameSession::getId)
                 .filter(Objects::nonNull)
@@ -197,39 +228,21 @@ public class MatchmakingService {
             }
         }
 
-        log.info("Preliminary: {}, Confirmed: {}, Potential: {}, Selected: {}, ToDelete: {}",
-                preliminarySessions.size(), confirmedSessions.size(), potentialSessions.size(), selectedSessions.size(),
-                sessionsToDelete.size());
-
         if (!sessionsToDelete.isEmpty()) {
             sessionRepository.deleteAll(sessionsToDelete);
             log.info("Deleted {} obsolete PRELIMINARY sessions", sessionsToDelete.size());
         }
+    }
 
-        log.info("Selected {} sessions", selectedSessions.size());
-        List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
-
-        // Notify Discord via Events
-        // We want to trigger checks for:
-        // 1. Existing Confirmed Sessions (to report them again, if desired, or at least
-        // consistent with legacy 'allConfirmed' logic - test expects this)
-        // 2. Newly Saved Sessions (Confirmed or Preliminary)
-
+    private void notifySessions(List<GameSession> confirmedSessions, List<GameSession> savedSessions) {
         List<GameSession> allSessionsToNotify = new ArrayList<>();
         allSessionsToNotify.addAll(confirmedSessions);
         allSessionsToNotify.addAll(savedSessions);
-
         checkAndNotifyPreliminary(allSessionsToNotify);
+    }
 
-        // Result construction
-        List<GameSessionDto> result = new ArrayList<>();
-        result.addAll(confirmedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
-        result.addAll(savedSessions.stream().map(this::mapToDto).collect(Collectors.toList()));
-
-        log.info("Returning {} sessions ({} confirmed + {} saved)", result.size(), confirmedSessions.size(),
-                savedSessions.size());
-
-        return result;
+    private List<GameSessionDto> mapSessionsToDto(List<GameSession> sessions) {
+        return sessions.stream().map(this::mapToDto).collect(Collectors.toList());
     }
 
     private void checkAndNotifyPreliminary(List<GameSession> sessions) {
