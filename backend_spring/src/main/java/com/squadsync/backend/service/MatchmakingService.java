@@ -50,7 +50,7 @@ public class MatchmakingService {
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
     private static final int MAX_SESSION_DURATION_MINUTES = 240;
-    private static final int MIN_SESSION_DURATION_MINUTES = 60;
+    private static final int MIN_SESSION_DURATION_MINUTES = 59;
     private static final int DEFAULT_PREFERENCE_WEIGHT = 5;
     private static final int PARTICIPATION_BONUS_MULTIPLIER = 2;
 
