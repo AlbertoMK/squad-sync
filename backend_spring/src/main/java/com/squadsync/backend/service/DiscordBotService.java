@@ -54,8 +54,26 @@ public class DiscordBotService {
         for (com.squadsync.backend.model.GameSession session : sessions) {
             net.dv8tion.jda.api.EmbedBuilder embed = new net.dv8tion.jda.api.EmbedBuilder();
 
+            // Calculate status for display
+            // We replicate basic logic here or usage helper.
+            // Ideally should be passed in, but signature change is larger.
+            // Let's rely on the fact that this method is called for Confirmed sessions
+            // usually,
+            // OR checks the status.
+
+            // Re-implementing basic status check for display purposes:
+            long acceptedPlayers = session.getPlayers().stream()
+                    .filter(p -> p
+                            .getStatus() == com.squadsync.backend.model.GameSessionPlayer.SessionPlayerStatus.ACCEPTED)
+                    .count();
+            int minPlayers = Math.max(2, session.getGame().getMinPlayers());
+            boolean enoughPlayers = acceptedPlayers >= minPlayers;
+            boolean startsSoon = session.getStartTime().isBefore(java.time.LocalDateTime.now().plusHours(1));
+
+            boolean isConfirmed = enoughPlayers && startsSoon;
+
             // Color based on status
-            if (session.getStatus() == com.squadsync.backend.model.GameSession.SessionStatus.CONFIRMED) {
+            if (isConfirmed) {
                 embed.setColor(java.awt.Color.GREEN);
                 embed.setTitle("✅ Sesión Confirmada: " + session.getGame().getTitle());
             } else {
@@ -77,7 +95,7 @@ public class DiscordBotService {
             embed.setTimestamp(java.time.Instant.now());
 
             String messageContent = "";
-            if (session.getStatus() == com.squadsync.backend.model.GameSession.SessionStatus.CONFIRMED) {
+            if (isConfirmed) {
                 messageContent = "@here";
             }
             channel.sendMessage(messageContent).setEmbeds(embed.build()).queue();

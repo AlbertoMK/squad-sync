@@ -29,7 +29,6 @@ public class DiscordBotServiceTest {
         session.setGame(game);
         session.setStartTime(LocalDateTime.now().plusHours(1));
         session.setEndTime(LocalDateTime.now().plusHours(2));
-        session.setStatus(GameSession.SessionStatus.CONFIRMED);
 
         // Add dummy players
         session.setPlayers(new ArrayList<>());
@@ -61,7 +60,6 @@ public class DiscordBotServiceTest {
         s1.setGame(game1);
         s1.setStartTime(LocalDateTime.now().plusHours(1));
         s1.setEndTime(LocalDateTime.now().plusHours(3));
-        s1.setStatus(GameSession.SessionStatus.CONFIRMED);
         s1.setPlayers(new ArrayList<>());
         sessions.add(s1);
 
@@ -74,7 +72,6 @@ public class DiscordBotServiceTest {
         s2.setGame(game2);
         s2.setStartTime(LocalDateTime.now().plusHours(2));
         s2.setEndTime(LocalDateTime.now().plusHours(4));
-        s2.setStatus(GameSession.SessionStatus.CONFIRMED);
         s2.setPlayers(new ArrayList<>());
         s2.setPlayers(new ArrayList<>());
 
@@ -112,11 +109,6 @@ public class DiscordBotServiceTest {
         // Less than 2 hours away
         s1.setStartTime(LocalDateTime.now().plusMinutes(90));
         s1.setEndTime(LocalDateTime.now().plusMinutes(150));
-        // Status might be PRELIMINARY if that enum exists, or just NOT CONFIRMED.
-        // The service method sendPreliminarySessionNotifications treats them as
-        // preliminary regardless of status enum for now,
-        // but let's assume standard behavior.
-        s1.setStatus(GameSession.SessionStatus.PRELIMINARY); // or similar if exists, defaulting to PENDING/CREATED
 
         s1.setPlayers(new ArrayList<>());
         s1.setPlayers(new ArrayList<>());

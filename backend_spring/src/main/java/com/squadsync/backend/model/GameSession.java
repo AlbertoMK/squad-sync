@@ -30,13 +30,11 @@ public class GameSession {
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<GameSessionPlayer> players = new java.util.ArrayList<>();
 
-    @Enumerated(EnumType.STRING)
-    private SessionStatus status = SessionStatus.PRELIMINARY;
-
     private double sessionScore;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private boolean notified = false;
+    private NotificationStatus notificationStatus = NotificationStatus.NONE;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -44,5 +42,11 @@ public class GameSession {
         PRELIMINARY,
         CONFIRMED,
         CANCELLED
+    }
+
+    public enum NotificationStatus {
+        NONE,
+        PRELIMINARY_SENT,
+        CONFIRMED_SENT
     }
 }

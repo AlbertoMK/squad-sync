@@ -501,7 +501,6 @@ public class MatchmakingService {
 
         session.setEndTime(timeSlot.endTime.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         session.setSessionScore(bestGame.score);
-        // Status is no longer set here, it's dynamic
 
         // Add players
         for (AvailabilitySlot slot : participatingSlots) {

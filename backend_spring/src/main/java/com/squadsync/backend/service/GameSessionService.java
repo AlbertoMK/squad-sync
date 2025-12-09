@@ -98,10 +98,10 @@ public class GameSessionService {
     }
 
     @Transactional
-    public void markAsNotified(String sessionId) {
+    public void updateNotificationStatus(String sessionId, GameSession.NotificationStatus status) {
         GameSession session = sessionRepository.findById(sessionId).orElse(null);
         if (session != null) {
-            session.setNotified(true);
+            session.setNotificationStatus(status);
             sessionRepository.save(session);
         }
     }

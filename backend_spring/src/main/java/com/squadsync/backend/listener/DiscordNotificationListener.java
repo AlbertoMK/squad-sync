@@ -26,30 +26,26 @@ public class DiscordNotificationListener {
 
         log.info("Handling GameSessionUpdatedEvent for session {}: Status={}", session.getId(), status);
 
-        // IMPORTANT: Sync the status field on the object so DiscordBotService sees the
-        // calculated status
-        session.setStatus(status);
-
         if (status == GameSession.SessionStatus.CONFIRMED) {
-            // Send update immediately
-            discordBotService.sendMatchmakingUpdates(Collections.singletonList(session));
+            if (session.getNotificationStatus() != GameSession.NotificationStatus.CONFIRMED_SENT) {
+                // Send update immediately
+                discordBotService.sendMatchmakingUpdates(Collections.singletonList(session));
+                gameSessionService.updateNotificationStatus(session.getId(),
+                        GameSession.NotificationStatus.CONFIRMED_SENT);
+            }
         } else if (status == GameSession.SessionStatus.PRELIMINARY) {
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
             java.time.LocalDateTime twoHoursLater = now.plusHours(2);
 
-            if (!session.isNotified() &&
+            if (session.getNotificationStatus() == GameSession.NotificationStatus.NONE &&
                     session.getStartTime().isBefore(twoHoursLater) &&
                     session.getEndTime().isAfter(now)) {
 
                 discordBotService.sendPreliminarySessionNotifications(Collections.singletonList(session));
 
                 // Mark as notified and save
-                session.setNotified(true);
-                // We need a repository to save this state.
-                // Using GameSessionService to save if possible or repository directly.
-                // Assuming we can add save method to GameSessionService or inject repository
-                // here.
-                gameSessionService.markAsNotified(session.getId());
+                gameSessionService.updateNotificationStatus(session.getId(),
+                        GameSession.NotificationStatus.PRELIMINARY_SENT);
             }
         }
     }

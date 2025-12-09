@@ -619,7 +619,7 @@ public class MatchmakingServiceTest {
         s1.setGame(game);
         s1.setStartTime(now.plusHours(1));
         s1.setEndTime(now.plusHours(3));
-        s1.setNotified(false);
+        s1.setNotificationStatus(GameSession.NotificationStatus.NONE);
         // Status implicitly preliminary or mocked
         when(gameSessionService.getSessionStatus(s1)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
 
@@ -629,7 +629,7 @@ public class MatchmakingServiceTest {
         s2.setGame(game);
         s2.setStartTime(now.plusDays(7));
         s2.setEndTime(now.plusDays(7).plusHours(2));
-        s2.setNotified(false);
+        s2.setNotificationStatus(GameSession.NotificationStatus.NONE);
         when(gameSessionService.getSessionStatus(s2)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
 
         // Mocks for scheduled task
@@ -663,7 +663,7 @@ public class MatchmakingServiceTest {
         session.setGame(new Game());
         session.setStartTime(now); // Starts exactly now
         session.setEndTime(now.plusMinutes(60));
-        session.setNotified(false);
+        session.setNotificationStatus(GameSession.NotificationStatus.NONE);
 
         when(gameSessionService.getSessionStatus(session)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
         when(sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(any(LocalDateTime.class)))

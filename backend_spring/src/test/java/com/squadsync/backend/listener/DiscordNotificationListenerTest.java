@@ -57,7 +57,7 @@ public class DiscordNotificationListenerTest {
         LocalDateTime now = LocalDateTime.now();
         GameSession session = new GameSession();
         session.setId("prelim-1");
-        session.setNotified(false);
+        session.setNotificationStatus(GameSession.NotificationStatus.NONE);
         session.setStartTime(now.plusMinutes(90)); // Starts in 1.5h (within 2h window)
         session.setEndTime(now.plusHours(3));
 
@@ -75,7 +75,8 @@ public class DiscordNotificationListenerTest {
         Assertions.assertEquals("prelim-1", captured.get(0).getId());
 
         // Verify it was marked as notified
-        verify(gameSessionService).markAsNotified("prelim-1");
+        verify(gameSessionService).updateNotificationStatus("prelim-1",
+                GameSession.NotificationStatus.PRELIMINARY_SENT);
     }
 
     @Test
@@ -83,7 +84,7 @@ public class DiscordNotificationListenerTest {
         // Given
         GameSession session = new GameSession();
         session.setId("prelim-notified");
-        session.setNotified(true);
+        session.setNotificationStatus(GameSession.NotificationStatus.PRELIMINARY_SENT);
 
         when(gameSessionService.getSessionStatus(session)).thenReturn(GameSession.SessionStatus.PRELIMINARY);
 
@@ -92,7 +93,7 @@ public class DiscordNotificationListenerTest {
 
         // Then
         verify(discordBotService, never()).sendPreliminarySessionNotifications(anyList());
-        verify(gameSessionService, never()).markAsNotified(anyString());
+        verify(gameSessionService, never()).updateNotificationStatus(anyString(), any());
     }
 
     @Test
@@ -101,7 +102,7 @@ public class DiscordNotificationListenerTest {
         LocalDateTime now = LocalDateTime.now();
         GameSession session = new GameSession();
         session.setId("prelim-future");
-        session.setNotified(false);
+        session.setNotificationStatus(GameSession.NotificationStatus.NONE);
         session.setStartTime(now.plusHours(5)); // Starts in 5h (outside 2h window)
         session.setEndTime(now.plusHours(7));
 
@@ -112,6 +113,6 @@ public class DiscordNotificationListenerTest {
 
         // Then
         verify(discordBotService, never()).sendPreliminarySessionNotifications(anyList());
-        verify(gameSessionService, never()).markAsNotified(anyString());
+        verify(gameSessionService, never()).updateNotificationStatus(anyString(), any());
     }
 }
