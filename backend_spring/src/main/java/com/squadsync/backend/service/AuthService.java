@@ -30,8 +30,11 @@ public class AuthService {
         var user = new User();
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
-        if (request.getDiscordUsername() != null && !request.getDiscordUsername().isBlank()) {
-            user.setDiscordUsername(request.getDiscordUsername());
+        if (request.getDiscordId() != null && !request.getDiscordId().isBlank()) {
+            if (!request.getDiscordId().matches("\\d+")) {
+                throw new RuntimeException("Discord ID must be numeric");
+            }
+            user.setDiscordId(request.getDiscordId());
         }
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -73,8 +76,12 @@ public class AuthService {
         var user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if (updateDto.getDiscordUsername() != null) {
-            user.setDiscordUsername(updateDto.getDiscordUsername());
+        if (updateDto.getDiscordId() != null) {
+            String discordId = updateDto.getDiscordId().trim();
+            if (!discordId.isEmpty() && !discordId.matches("\\d+")) {
+                throw new RuntimeException("Discord ID must be numeric");
+            }
+            user.setDiscordId(discordId);
         }
         // Add other updatable fields here if needed in future
 
@@ -93,7 +100,7 @@ public class AuthService {
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
-        dto.setDiscordUsername(user.getDiscordUsername());
+        dto.setDiscordId(user.getDiscordId());
         dto.setRole(user.getRole());
         dto.setAvatarColor(user.getAvatarColor());
         dto.setCreatedAt(user.getCreatedAt());

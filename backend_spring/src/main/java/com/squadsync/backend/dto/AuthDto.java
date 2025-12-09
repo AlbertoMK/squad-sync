@@ -13,7 +13,7 @@ public class AuthDto {
     public static class RegisterRequest {
         private String username;
         private String email;
-        private String discordUsername;
+        private String discordId;
         private String password;
         private String avatarColor;
     }

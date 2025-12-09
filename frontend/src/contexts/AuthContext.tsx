@@ -7,14 +7,14 @@ interface User {
     email: string;
     role: string;
     avatarColor: string;
-    discordUsername?: string;
+    discordId?: string;
 }
 
 interface AuthContextType {
     user: User | null;
     token: string | null;
     login: (email: string, password: string) => Promise<void>;
-    register: (username: string, email: string, password: string, avatarColor?: string, discordUsername?: string) => Promise<void>;
+    register: (username: string, email: string, password: string, avatarColor?: string, discordId?: string) => Promise<void>;
     updateProfile: (data: Partial<User>) => Promise<void>;
     logout: () => void;
     isLoading: boolean;
@@ -68,9 +68,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
-    const register = async (username: string, email: string, password: string, avatarColor?: string, discordUsername?: string) => {
+    const register = async (username: string, email: string, password: string, avatarColor?: string, discordId?: string) => {
         try {
-            const response = await authAPI.register({ username, email, password, avatarColor, discordUsername });
+            const response = await authAPI.register({ username, email, password, avatarColor, discordId });
             const { user: userData, token: userToken } = response.data;
 
             setUser(userData);

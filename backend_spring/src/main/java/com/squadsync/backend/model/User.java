@@ -24,7 +24,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    private String discordUsername;
+    private String discordId;
 
     @Column(nullable = false)
     private String passwordHash;

@@ -8,7 +8,7 @@ export default function NotificationBanner() {
 
     if (isLoading || !user) return null;
 
-    if (user.discordUsername) return null;
+    if (user.discordId) return null;
 
     return (
         <div style={{ backgroundColor: 'var(--mantine-color-yellow-1)', borderBottom: '1px solid var(--mantine-color-yellow-3)' }}>
@@ -24,7 +24,7 @@ export default function NotificationBanner() {
                         title: { color: 'var(--mantine-color-yellow-9)' }
                     }}
                 >
-                    No tienes configurado tu usuario de Discord. Por favor ve a <Link to="/profile" style={{ fontWeight: 'bold', color: 'inherit' }}>Ajustes</Link> para configurarlo y recibir notificaciones de partidas.
+                    No tienes configurado tu ID de Discord. Por favor ve a <Link to="/profile" style={{ fontWeight: 'bold', color: 'inherit' }}>Ajustes</Link> para configurarlo y recibir notificaciones de partidas.
                 </Alert>
             </Container>
         </div>

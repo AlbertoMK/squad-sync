@@ -19,7 +19,7 @@ export default function Register() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [avatarColor, setAvatarColor] = useState('#3b82f6');
-    const [discordUsername, setDiscordUsername] = useState('');
+    const [discordId, setDiscordId] = useState('');
     const [loading, setLoading] = useState(false);
     const { register } = useAuth();
     const navigate = useNavigate();
@@ -29,7 +29,16 @@ export default function Register() {
         setLoading(true);
 
         try {
-            await register(username, email, password, avatarColor, discordUsername);
+            if (discordId && !/^\d+$/.test(discordId)) {
+                notifications.show({
+                    title: 'Error',
+                    message: 'El ID de Discord debe contener solo números',
+                    color: 'red',
+                });
+                setLoading(false);
+                return;
+            }
+            await register(username, email, password, avatarColor, discordId);
             notifications.show({
                 title: '¡Cuenta creada!',
                 message: 'Registro exitoso',
@@ -89,11 +98,11 @@ export default function Register() {
                         />
 
                         <TextInput
-                            label="Usuario de Discord (Opcional)"
-                            placeholder="usuario354"
-                            description="Para notificarte cuando se armen partidas"
-                            value={discordUsername}
-                            onChange={(e) => setDiscordUsername(e.target.value)}
+                            label="ID de Usuario de Discord (Opcional)"
+                            placeholder="Ej: 123456789012345678"
+                            description="Modo desarrollador > Click derecho en perfil > Copiar ID de usuario"
+                            value={discordId}
+                            onChange={(e) => setDiscordId(e.target.value)}
                         />
 
                         <Button type="submit" fullWidth loading={loading}>

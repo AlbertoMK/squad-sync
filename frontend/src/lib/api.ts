@@ -39,9 +39,9 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
-    register: (data: { username: string; email: string; password: string; avatarColor?: string, discordUsername?: string }) =>
+    register: (data: { username: string; email: string; password: string; avatarColor?: string, discordId?: string }) =>
         api.post('/api/auth/register', data),
-    updateProfile: (data: { username?: string; email?: string; avatarColor?: string, discordUsername?: string }) =>
+    updateProfile: (data: { username?: string; email?: string; avatarColor?: string, discordId?: string }) =>
         api.put('/api/auth/me', data),
     login: (data: { email: string; password: string }) =>
         api.post('/api/auth/login', data),

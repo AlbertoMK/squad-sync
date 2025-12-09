@@ -5,22 +5,31 @@ import { notifications } from '@mantine/notifications';
 
 export default function Profile() {
     const { user, updateProfile } = useAuth();
-    const [discordUsername, setDiscordUsername] = useState('');
+    const [discordId, setDiscordId] = useState('');
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (user?.discordUsername) {
-            setDiscordUsername(user.discordUsername);
+        if (user?.discordId) {
+            setDiscordId(user.discordId);
         }
     }, [user]);
 
     const handleUpdate = async () => {
         setLoading(true);
         try {
-            await updateProfile({ discordUsername });
+            if (discordId && !/^\d+$/.test(discordId)) {
+                notifications.show({
+                    title: 'Error',
+                    message: 'El ID de Discord debe contener solo números',
+                    color: 'red',
+                });
+                setLoading(false);
+                return;
+            }
+            await updateProfile({ discordId });
             notifications.show({
                 title: 'Perfil actualizado',
-                message: 'Tu usuario de Discord ha sido guardado',
+                message: 'Tu ID de Discord ha sido guardado',
                 color: 'green',
             });
         } catch (error) {
@@ -76,11 +85,11 @@ export default function Profile() {
                         </div>
 
                         <TextInput
-                            label="Usuario de Discord"
-                            placeholder="usuario354"
-                            description="Para notificarte cuando se armen partidas"
-                            value={discordUsername}
-                            onChange={(e) => setDiscordUsername(e.target.value)}
+                            label="ID de Usuario de Discord"
+                            placeholder="Ej: 123456789012345678"
+                            description="Modo desarrollador > Click derecho en perfil > Copiar ID de usuario"
+                            value={discordId}
+                            onChange={(e) => setDiscordId(e.target.value)}
                         />
 
                         <Group justify="flex-end">

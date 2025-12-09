@@ -33,11 +33,11 @@ public class DiscordBotServiceTest {
 
         // Add dummy players
         session.setPlayers(new ArrayList<>());
-        // We'd need actual user objects for a full graph but size check is enough for
-        // now
-        // or ensure no NullPointer if we access user
-        // The implementation uses session.getPlayers().size(), so empty list is 0,
-        // safe.
+        GameSessionPlayer player = new GameSessionPlayer();
+        com.squadsync.backend.model.User user = new com.squadsync.backend.model.User();
+        user.setDiscordId("1234567890");
+        player.setUser(user);
+        session.getPlayers().add(player);
 
         List<GameSession> sessions = new ArrayList<>();
         sessions.add(session);
@@ -76,8 +76,19 @@ public class DiscordBotServiceTest {
         s2.setEndTime(LocalDateTime.now().plusHours(4));
         s2.setStatus(GameSession.SessionStatus.CONFIRMED);
         s2.setPlayers(new ArrayList<>());
-        s2.getPlayers().add(new GameSessionPlayer());
-        s2.getPlayers().add(new GameSessionPlayer());
+        s2.setPlayers(new ArrayList<>());
+
+        GameSessionPlayer p1 = new GameSessionPlayer();
+        com.squadsync.backend.model.User u1 = new com.squadsync.backend.model.User();
+        u1.setDiscordId("1111111111");
+        p1.setUser(u1);
+        s2.getPlayers().add(p1);
+
+        GameSessionPlayer p2 = new GameSessionPlayer();
+        com.squadsync.backend.model.User u2 = new com.squadsync.backend.model.User();
+        u2.setDiscordId("2222222222");
+        p2.setUser(u2);
+        s2.getPlayers().add(p2);
         sessions.add(s2);
 
         System.out.println("Testing Discord Bot Send Multiple Updates...");
@@ -108,7 +119,13 @@ public class DiscordBotServiceTest {
         s1.setStatus(GameSession.SessionStatus.PRELIMINARY); // or similar if exists, defaulting to PENDING/CREATED
 
         s1.setPlayers(new ArrayList<>());
-        s1.getPlayers().add(new GameSessionPlayer());
+        s1.setPlayers(new ArrayList<>());
+
+        GameSessionPlayer pp1 = new GameSessionPlayer();
+        com.squadsync.backend.model.User userP1 = new com.squadsync.backend.model.User();
+        userP1.setDiscordId("3333333333");
+        pp1.setUser(userP1);
+        s1.getPlayers().add(pp1);
 
         sessions.add(s1);
 

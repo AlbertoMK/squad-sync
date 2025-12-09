@@ -120,8 +120,10 @@ public class DiscordBotService {
             // Build mentions string
             StringBuilder mentions = new StringBuilder();
             for (com.squadsync.backend.model.GameSessionPlayer player : session.getPlayers()) {
-                if (player.getUser().getDiscordUsername() != null && !player.getUser().getDiscordUsername().isBlank()) {
-                    mentions.append("@").append(player.getUser().getDiscordUsername()).append(" ");
+                String discordId = player.getUser().getDiscordId();
+
+                if (discordId != null && !discordId.isBlank()) {
+                    mentions.append("<@").append(discordId).append(">").append(" ");
                 }
             }
 
