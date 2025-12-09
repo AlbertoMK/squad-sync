@@ -32,6 +32,17 @@ public class AvailabilityService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        // Check for overlaps
+        List<AvailabilitySlot> existingSlots = slotRepository.findByUserId(userId);
+        java.time.LocalDateTime newStart = dto.getStartTime().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        java.time.LocalDateTime newEnd = dto.getEndTime().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+
+        for (AvailabilitySlot existing : existingSlots) {
+            if (existing.getStartTime().isBefore(newEnd) && existing.getEndTime().isAfter(newStart)) {
+                throw new IllegalArgumentException("Overlapping availability slot exists");
+            }
+        }
+
         AvailabilitySlot slot = new AvailabilitySlot();
         slot.setUser(user);
         // Use LocalDateTime directly (Floating Time)
