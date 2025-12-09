@@ -132,18 +132,18 @@ public class MatchmakingServiceTest {
 
         List<AvailabilitySlot> slots = new ArrayList<>();
 
-        // User 1: 20:00 - 23:00 (Single Slot)
+        // User 1: 20:00 - 22:00 (Single Slot)
         AvailabilitySlot s1 = new AvailabilitySlot();
         s1.setId("s1_1");
         s1.setUser(u1);
         s1.setStartTime(
                 now.withHour(20).withMinute(0).withSecond(0).truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
-        s1.setEndTime(now.withHour(23).withMinute(0).withSecond(0).truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+        s1.setEndTime(now.withHour(22).withMinute(0).withSecond(0).truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         s1.setPreferences(List.of(createPreference(s1, game, 10)));
         slots.add(s1);
 
-        // User 2: Broken into 30 min slots from 20:00 to 23:00
-        for (int i = 0; i < 6; i++) {
+        // User 2: Broken into 30 min slots from 20:00 to 22:00
+        for (int i = 0; i < 4; i++) {
             AvailabilitySlot s2 = new AvailabilitySlot();
             s2.setId("s2_" + i);
             s2.setUser(u2);
@@ -179,7 +179,7 @@ public class MatchmakingServiceTest {
         Assertions.assertEquals(1, result.size(), "Should create exactly one merged session");
         GameSessionDto session = result.get(0);
         long minutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
-        Assertions.assertEquals(180, minutes, "Session should be 3 hours long");
+        Assertions.assertEquals(120, minutes, "Session should be 2 hours long");
     }
 
     private AvailabilityGamePreference createPreference(AvailabilitySlot slot, Game game, int weight) {
@@ -194,7 +194,7 @@ public class MatchmakingServiceTest {
     public void testMaxSessionDurationConstraint() {
         // Setup scenarios: User 1 (09:00 - 22:00) vs User 2 (09:00 - 14:00)
         // Overlap: 5 hours (09:00 - 14:00)
-        // Constraint: Max session duration = 4 hours (240 mins)
+        // Constraint: Max session duration = 2 hours (120 mins)
 
         LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0)
                 .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
@@ -253,14 +253,14 @@ public class MatchmakingServiceTest {
         GameSessionDto session = result.get(0);
         long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
 
-        Assertions.assertEquals(240, durationMinutes,
-                "Session duration should be capped at 4 hours (240 min) even if availability is 5 hours");
+        Assertions.assertEquals(120, durationMinutes,
+                "Session duration should be capped at 2 hours (120 min) even if availability is 5 hours");
     }
 
     @Test
     public void testSessionSplittingForLongAvailability() {
-        // Setup scenarios: User 1 & User 2 available 09:00 - 14:00 (5 hours)
-        // Expected: 2 sessions. One 4h (240m), One 1h (60m).
+        // Setup scenarios: User 1 & User 2 available 09:00 - 12:00 (3 hours)
+        // Expected: 2 sessions. One 2h (120m), One 1h (60m).
 
         LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0)
                 .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
@@ -274,21 +274,21 @@ public class MatchmakingServiceTest {
 
         List<AvailabilitySlot> slots = new ArrayList<>();
 
-        // User 1: 09:00 - 14:00
+        // User 1: 09:00 - 12:00
         AvailabilitySlot s1 = new AvailabilitySlot();
         s1.setId("s1");
         s1.setUser(u1);
         s1.setStartTime(now);
-        s1.setEndTime(now.withHour(14));
+        s1.setEndTime(now.withHour(12));
         s1.setPreferences(List.of(createPreference(s1, game, 10)));
         slots.add(s1);
 
-        // User 2: 09:00 - 14:00
+        // User 2: 09:00 - 12:00
         AvailabilitySlot s2 = new AvailabilitySlot();
         s2.setId("s2");
         s2.setUser(u2);
         s2.setStartTime(now);
-        s2.setEndTime(now.withHour(14));
+        s2.setEndTime(now.withHour(12));
         s2.setPreferences(List.of(createPreference(s2, game, 10)));
         slots.add(s2);
 
@@ -314,12 +314,12 @@ public class MatchmakingServiceTest {
         // Assert
         Assertions.assertEquals(2, result.size(), "Should create 2 sessions");
 
-        boolean has4HourSession = result.stream()
-                .anyMatch(s -> java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes() == 240);
+        boolean has2HourSession = result.stream()
+                .anyMatch(s -> java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes() == 120);
         boolean has1HourSession = result.stream()
                 .anyMatch(s -> java.time.Duration.between(s.getStartTime(), s.getEndTime()).toMinutes() == 60);
 
-        Assertions.assertTrue(has4HourSession, "Should have a 4h session");
+        Assertions.assertTrue(has2HourSession, "Should have a 2h session");
         Assertions.assertTrue(has1HourSession, "Should have a 1h session");
     }
 
