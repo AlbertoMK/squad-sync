@@ -43,6 +43,12 @@ interface Session {
     status: 'PRELIMINARY' | 'CONFIRMED' | 'CANCELLED';
 }
 
+const parseDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    // Remove 'Z' if present to prevent UTC conversion, ensuring it's treated as local time
+    return new Date(dateStr.replace(/Z$/, ''));
+};
+
 export default function Dashboard() {
     const { user } = useAuth();
     const [sessions, setSessions] = useState<Session[]>([]);
@@ -139,12 +145,12 @@ export default function Dashboard() {
     const handleOpenRejectModal = (sessionId: string) => {
         const session = sessions.find(s => s.id === sessionId);
         if (session) {
-            const sessionStart = new Date(session.startTime).getTime();
-            const sessionEnd = new Date(session.endTime).getTime();
+            const sessionStart = parseDate(session.startTime).getTime();
+            const sessionEnd = parseDate(session.endTime).getTime();
 
             const overlap = userSlots.some(slot => {
-                const slotStart = new Date(slot.startTime).getTime();
-                const slotEnd = new Date(slot.endTime).getTime();
+                const slotStart = parseDate(slot.startTime).getTime();
+                const slotEnd = parseDate(slot.endTime).getTime();
                 return slotStart < sessionEnd && slotEnd > sessionStart;
             });
 
@@ -385,7 +391,7 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                     <Group gap="xs" mb={4}>
                         <IconCalendar size={16} />
                         <Text size="sm">
-                            {format(new Date(session.startTime), "PPP 'a las' HH:mm", {
+                            {format(parseDate(session.startTime), "PPP 'a las' HH:mm", {
                                 locale: es,
                             })}
                         </Text>
@@ -395,8 +401,8 @@ function SessionCard({ session, userId, onAccept, onReject, readOnly = false, fu
                         <IconClock size={16} />
                         <Badge variant="gradient" gradient={{ from: 'indigo', to: 'cyan' }}>
                             {(() => {
-                                const start = new Date(session.startTime);
-                                const end = new Date(session.endTime);
+                                const start = parseDate(session.startTime);
+                                const end = parseDate(session.endTime);
                                 const diffMilliseconds = end.getTime() - start.getTime();
                                 const totalMinutes = Math.round(diffMilliseconds / (1000 * 60));
                                 const hours = Math.floor(totalMinutes / 60);

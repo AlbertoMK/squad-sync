@@ -28,7 +28,14 @@ interface AvailabilityEvent {
     resource?: any;
 }
 
+
 type CalendarView = 'month' | 'week' | 'work_week' | 'day' | 'agenda';
+
+const parseDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    // Remove 'Z' if present to prevent UTC conversion, ensuring it's treated as local time
+    return new Date(dateStr.replace(/Z$/, ''));
+};
 
 export default function AvailabilityCalendar() {
     const [events, setEvents] = useState<AvailabilityEvent[]>([]);
@@ -50,8 +57,8 @@ export default function AvailabilityCalendar() {
             const formattedEvents = response.data.map((slot: any) => ({
                 id: slot.id,
                 title: slot.game ? `Disponible para ${slot.game.title}` : 'Disponible',
-                start: new Date(slot.startTime),
-                end: new Date(slot.endTime),
+                start: parseDate(slot.startTime),
+                end: parseDate(slot.endTime),
                 resource: slot,
             }));
             setEvents(formattedEvents);
