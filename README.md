@@ -14,6 +14,24 @@ Una aplicación web colaborativa para coordinar sesiones de juego entre amigos, 
   - Duración de sesión (mínimo 1h, máximo 4h).
 - **Notificaciones por Email**: Recibe avisos cuando se encuentra una partida.
 
+## 🧩 Cómo funciona el Matchmaking
+
+El sistema utiliza un algoritmo avanzado para maximizar el tiempo de juego compartido. El proceso sigue estos pasos:
+
+1.  **Análisis Temporal (Atomic Intervals)**: Descompone todas las disponibilidades de los usuarios en pequeños intervalos de tiempo donde el estado de disponibilidad no cambia.
+2.  **Fusión Inteligente (Smart Merge)**: Une intervalos contiguos siempre que exista un "núcleo" de al menos 2 jugadores disponibles durante todo el periodo. Esto permite crear ventanas de tiempo largas donde algunos jugadores pueden unirse tarde o irse temprano (invitados/partial availability).
+3.  **Reglas de Duración (Smart Split)**:
+    -   **Objetivo**: Sesiones de 2 horas.
+    -   **Límite Máximo**: 4 horas.
+    -   **Lógica de División**:
+        -   Si la ventana compartida es > 2h, se intenta dividir en bloques de 2h.
+        -   Si el tiempo restante al dividir es pequeño (< 1h), se extiende la sesión actual (ej: una ventana de 2h 30m genera una única sesión de 2h 30m).
+        -   Si el tiempo restante es suficiente (>= 1h), se crea una segunda sesión (ej: una ventana de 3h genera una sesión de 2h y otra de 1h).
+4.  **Puntuación y Selección**:
+    -   Calcula la puntuación de cada juego basándose en las preferencias de los usuarios disponibles en esa franja.
+    -   Genera candidatos de sesión y selecciona aquellos que maximizan: (1) Número de jugadores, (2) Puntuación de juego, (3) Duración.
+    -   Filtra automáticamente a los jugadores para incluirlos solo en las sesiones donde su disponibilidad coincide realmente.
+
 ## 🚀 Instalación y Despliegue (Docker)
 
 La forma recomendada de desplegar SquadSync es utilizando **Docker** y **Docker Compose**. Esto levanta automáticamente el backend (Spring Boot), el frontend (React + Nginx), la base de datos (MySQL) y un túnel de Cloudflare para acceso remoto.

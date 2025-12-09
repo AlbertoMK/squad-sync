@@ -17,7 +17,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.ArgumentCaptor;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
@@ -194,7 +193,8 @@ public class MatchmakingServiceTest {
     public void testMaxSessionDurationConstraint() {
         // Setup scenarios: User 1 (09:00 - 22:00) vs User 2 (09:00 - 14:00)
         // Overlap: 5 hours (09:00 - 14:00)
-        // Constraint: Max session duration = 2 hours (120 mins)
+        // Constraint: Preferred session duration = 2 hours (120 mins), Max 4h.
+        // For 5 hours, we expect it to be split into chunks, starting with a 2h chunk.
 
         LocalDateTime now = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0)
                 .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
@@ -254,7 +254,7 @@ public class MatchmakingServiceTest {
         long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
 
         Assertions.assertEquals(120, durationMinutes,
-                "Session duration should be capped at 2 hours (120 min) even if availability is 5 hours");
+                "Session duration should be 2 hours (120 min) due to splitting preference for very long durations");
     }
 
     @Test

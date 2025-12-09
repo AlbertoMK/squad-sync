@@ -29,7 +29,7 @@ public class MatchmakingService {
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
-    private static final int MAX_SESSION_DURATION_MINUTES = 120;
+    private static final int MAX_SESSION_DURATION_MINUTES = 240;
     private static final int MIN_SESSION_DURATION_MINUTES = 60;
     private static final int DEFAULT_PREFERENCE_WEIGHT = 5;
     private static final int PARTICIPATION_BONUS_MULTIPLIER = 2;
@@ -298,7 +298,7 @@ public class MatchmakingService {
                 }
             }
 
-            if (activeSlotIds.size() >= MIN_PLAYERS_FOR_SESSION) {
+            if (activeUserIds.size() >= MIN_PLAYERS_FOR_SESSION) {
                 atomicSlots.add(new TimeSlot(start, end, activeSlotIds, activeUserIds));
             }
         }
@@ -312,13 +312,22 @@ public class MatchmakingService {
         for (int i = 1; i < atomicSlots.size(); i++) {
             TimeSlot next = atomicSlots.get(i);
 
-            boolean sameUsers = current.getUserIds().equals(next.getUserIds());
             boolean contiguous = current.endTime.equals(next.startTime);
 
-            if (contiguous && sameUsers) {
-                // Determine merged duration
+            // Check intersection of users for continuity "core" group
+            Set<String> intersection = new HashSet<>(current.getUserIds());
+            intersection.retainAll(next.getUserIds());
+
+            boolean hasCoreGroup = intersection.size() >= MIN_PLAYERS_FOR_SESSION;
+
+            if (contiguous && hasCoreGroup) {
+                // Merge
                 current.endTime = next.endTime;
-                // Note: We don't worry about max duration here, we split later.
+                // Union of slots and users
+                current.slotIds.addAll(next.slotIds);
+                current.userIds.addAll(next.userIds);
+                // De-duplicate Ids if list wasn't distinct (it is list of strings)
+                current.slotIds = current.slotIds.stream().distinct().collect(Collectors.toList());
             } else {
                 mergedSlots.add(current);
                 current = next;
@@ -329,27 +338,57 @@ public class MatchmakingService {
         // Filter and Split by Duration constraints
         List<TimeSlot> finalSlots = new ArrayList<>();
         for (TimeSlot slot : mergedSlots) {
-            long duration = java.time.Duration.between(slot.startTime, slot.endTime).toMinutes();
+            long totalMinutes = java.time.Duration.between(slot.startTime, slot.endTime).toMinutes();
 
-            if (duration < MIN_SESSION_DURATION_MINUTES) {
+            if (totalMinutes < MIN_SESSION_DURATION_MINUTES) {
                 continue;
             }
 
-            if (duration <= MAX_SESSION_DURATION_MINUTES) {
-                finalSlots.add(slot);
-            } else {
-                // Split large slots
-                LocalDateTime chunkStart = slot.startTime;
-                while (java.time.Duration.between(chunkStart, slot.endTime)
-                        .toMinutes() >= MIN_SESSION_DURATION_MINUTES) {
-                    LocalDateTime chunkEnd = chunkStart.plusMinutes(MAX_SESSION_DURATION_MINUTES);
-                    if (chunkEnd.isAfter(slot.endTime)) {
-                        chunkEnd = slot.endTime;
+            // Smart Splitting Logic
+            LocalDateTime chunkStart = slot.startTime;
+            while (chunkStart.isBefore(slot.endTime)) {
+
+                // If remaining time is small enough for one chunk (<= MAX, currently 240)
+                // AND logic for "remainder vs split" ?
+                // Actually we just iterate carving out 2h chunks unless remainder logic
+                // applies.
+
+                long remaining = java.time.Duration.between(chunkStart, slot.endTime).toMinutes();
+
+                // Base target: 2 hours (120 min)
+                long targetChunk = 120; // Preferred duration
+
+                if (remaining <= targetChunk) {
+                    // Just finish it
+                    if (remaining >= MIN_SESSION_DURATION_MINUTES) {
+                        finalSlots.add(new TimeSlot(chunkStart, slot.endTime, slot.slotIds, slot.userIds));
                     }
-                    if (java.time.Duration.between(chunkStart, chunkEnd).toMinutes() >= MIN_SESSION_DURATION_MINUTES) {
+                    break;
+                } else {
+                    // remaining > 120
+                    // Check remainder if we cut at 120
+                    long remainderAfterCut = remaining - targetChunk;
+
+                    if (remainderAfterCut < 60) {
+                        // Remainder is small (< 1h).
+                        // Extend current chunk to include it, IF it fits in MAX (240).
+                        long extendedDuration = targetChunk + remainderAfterCut;
+
+                        if (extendedDuration <= MAX_SESSION_DURATION_MINUTES) {
+                            // Perfect, make one big chunk
+                            finalSlots.add(new TimeSlot(chunkStart, slot.endTime, slot.slotIds, slot.userIds));
+                            break;
+                        } else {
+                            LocalDateTime chunkEnd = chunkStart.plusMinutes(targetChunk);
+                            finalSlots.add(new TimeSlot(chunkStart, chunkEnd, slot.slotIds, slot.userIds));
+                            chunkStart = chunkEnd;
+                        }
+                    } else {
+                        // Remainder > 60. Split strictly at 2h.
+                        LocalDateTime chunkEnd = chunkStart.plusMinutes(targetChunk);
                         finalSlots.add(new TimeSlot(chunkStart, chunkEnd, slot.slotIds, slot.userIds));
+                        chunkStart = chunkEnd;
                     }
-                    chunkStart = chunkEnd;
                 }
             }
         }
@@ -432,7 +471,17 @@ public class MatchmakingService {
             }
 
             if (weight > 0) {
-                participatingSlots.add(slot);
+                // Ensure the slot actually overlaps with the chosen session time (for partial
+                // availability handling)
+                LocalDateTime slotStart = slot.getStartTime();
+                LocalDateTime slotEnd = slot.getEndTime();
+                LocalDateTime sessionStart = timeSlot.startTime;
+                LocalDateTime sessionEnd = timeSlot.endTime;
+
+                // Check overlap: start < sessionEnd && end > sessionStart
+                if (slotStart.isBefore(sessionEnd) && slotEnd.isAfter(sessionStart)) {
+                    participatingSlots.add(slot);
+                }
             }
         }
 
