@@ -107,9 +107,10 @@ export default function AvailabilityCalendar() {
         if (!newSlot) return;
 
         try {
+            // Use format to send local time string "YYYY-MM-DDTHH:mm:ss" avoiding UTC conversion
             const payload: any = {
-                startTime: newSlot.start.toISOString(),
-                endTime: newSlot.end.toISOString(),
+                startTime: format(newSlot.start, "yyyy-MM-dd'T'HH:mm:ss"),
+                endTime: format(newSlot.end, "yyyy-MM-dd'T'HH:mm:ss"),
             };
 
             if (preferenceType === 'custom') {
