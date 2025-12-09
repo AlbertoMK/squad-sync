@@ -61,6 +61,9 @@ La forma recomendada de desplegar SquadSync es utilizando **Docker** y **Docker 
    - `JWT_SECRET`: Una cadena aleatoria segura para firmar los tokens.
    - `TUNNEL_TOKEN`: El token de tu túnel de Cloudflare (si usas Cloudflare Zero Trust).
      - *Nota*: Si solo quieres probarlo rápidamente, puedes dejar el túnel temporal configurado en `docker-compose.yml` y ver la URL en los logs.
+   - **Discord Bot** (Opcional pero recomendado para notificaciones):
+     - `DISCORD_BOT_TOKEN`: Token de tu bot de Discord (creado en [Discord Developer Portal](https://discord.com/developers/applications)).
+     - `DISCORD_BOT_CHANNEL_ID`: ID del canal donde el bot enviará las actualizaciones. (Activa el "Modo Desarrollador" en Discord, haz click derecho sobre el canal y "Copiar ID").
 
 3. **Arrancar los servicios**
    ```bash
