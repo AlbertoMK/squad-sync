@@ -2,6 +2,9 @@
 
 Una aplicación web colaborativa para coordinar sesiones de juego entre amigos, optimizada para Raspberry Pi.
 
+![Screenshot del dashboard](/dashboard.png)
+![Screenshot del calendario de disponibilidad](/calendario.png)
+
 ## 🎮 Características
 
 - **Gestión de Usuarios**: Registro e inicio de sesión con autenticación JWT.
