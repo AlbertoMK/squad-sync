@@ -3,15 +3,36 @@ package com.squadsync.backend.service;
 import com.squadsync.backend.dto.GameDto;
 import com.squadsync.backend.dto.GameSessionDto;
 import com.squadsync.backend.dto.GameSessionPlayerDto;
-import com.squadsync.backend.model.*;
-import com.squadsync.backend.repository.*;
+import com.squadsync.backend.event.GameSessionUpdatedEvent;
+import com.squadsync.backend.model.AvailabilityGamePreference;
+import com.squadsync.backend.model.AvailabilitySlot;
+import com.squadsync.backend.model.Game;
+import com.squadsync.backend.model.GameSession;
+import com.squadsync.backend.model.GameSessionPlayer;
+import com.squadsync.backend.model.UserGamePreference;
+import com.squadsync.backend.repository.AvailabilitySlotRepository;
+import com.squadsync.backend.repository.GameRepository;
+import com.squadsync.backend.repository.GameSessionRepository;
+import com.squadsync.backend.repository.UserGamePreferenceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,7 +47,7 @@ public class MatchmakingService {
 
     private final GameSessionService gameSessionService;
     // private final DiscordBotService discordBotService; // Decoupled via Events
-    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
     private static final int MAX_SESSION_DURATION_MINUTES = 240;
@@ -143,8 +164,8 @@ public class MatchmakingService {
             if (Double.compare(s1.getSessionScore(), s2.getSessionScore()) != 0)
                 return Double.compare(s2.getSessionScore(), s1.getSessionScore());
 
-            long d1 = java.time.Duration.between(s1.getStartTime(), s1.getEndTime()).toMinutes();
-            long d2 = java.time.Duration.between(s2.getStartTime(), s2.getEndTime()).toMinutes();
+            long d1 = Duration.between(s1.getStartTime(), s1.getEndTime()).toMinutes();
+            long d2 = Duration.between(s2.getStartTime(), s2.getEndTime()).toMinutes();
             return Long.compare(d2, d1);
         });
 
@@ -215,11 +236,11 @@ public class MatchmakingService {
         // Just trigger event for each session, allowing Listener to handle notification
         // logic
         for (GameSession session : sessions) {
-            eventPublisher.publishEvent(new com.squadsync.backend.event.GameSessionUpdatedEvent(this, session));
+            eventPublisher.publishEvent(new GameSessionUpdatedEvent(this, session));
         }
     }
 
-    @org.springframework.scheduling.annotation.Scheduled(cron = "0 1,31 * * * *")
+    @Scheduled(cron = "0 1,31 * * * *")
     public void checkUpcomingPreliminarySessions() {
         log.info("Running scheduled check for upcoming preliminary sessions...");
         LocalDateTime now = LocalDateTime.now();
@@ -338,7 +359,7 @@ public class MatchmakingService {
         // Filter and Split by Duration constraints
         List<TimeSlot> finalSlots = new ArrayList<>();
         for (TimeSlot slot : mergedSlots) {
-            long totalMinutes = java.time.Duration.between(slot.startTime, slot.endTime).toMinutes();
+            long totalMinutes = Duration.between(slot.startTime, slot.endTime).toMinutes();
 
             if (totalMinutes < MIN_SESSION_DURATION_MINUTES) {
                 continue;
@@ -353,7 +374,7 @@ public class MatchmakingService {
                 // Actually we just iterate carving out 2h chunks unless remainder logic
                 // applies.
 
-                long remaining = java.time.Duration.between(chunkStart, slot.endTime).toMinutes();
+                long remaining = Duration.between(chunkStart, slot.endTime).toMinutes();
 
                 // Base target: 2 hours (120 min)
                 long targetChunk = 120; // Preferred duration
@@ -526,8 +547,8 @@ public class MatchmakingService {
         dto.setId(session.getId());
         dto.setGameId(session.getGame().getId());
         // Convert Entity (LocalDateTime) to DTO (Instant) using UTC
-        dto.setStartTime(session.getStartTime().toInstant(java.time.ZoneOffset.UTC));
-        dto.setEndTime(session.getEndTime().toInstant(java.time.ZoneOffset.UTC));
+        dto.setStartTime(session.getStartTime().toInstant(ZoneOffset.UTC));
+        dto.setEndTime(session.getEndTime().toInstant(ZoneOffset.UTC));
         dto.setSessionScore(session.getSessionScore());
         dto.setCreatedAt(session.getCreatedAt());
 

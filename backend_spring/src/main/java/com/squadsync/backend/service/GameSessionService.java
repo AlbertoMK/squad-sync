@@ -1,16 +1,20 @@
 package com.squadsync.backend.service;
 
+import com.squadsync.backend.event.GameSessionUpdatedEvent;
 import com.squadsync.backend.model.AvailabilitySlot;
 import com.squadsync.backend.model.GameSession;
 import com.squadsync.backend.model.GameSessionPlayer;
+import com.squadsync.backend.model.User;
 import com.squadsync.backend.repository.AvailabilitySlotRepository;
 import com.squadsync.backend.repository.GameSessionRepository;
+import com.squadsync.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,8 +25,8 @@ public class GameSessionService {
 
     private final GameSessionRepository sessionRepository;
     private final AvailabilitySlotRepository availabilitySlotRepository;
-    private final com.squadsync.backend.repository.UserRepository userRepository;
-    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void acceptSession(String sessionId, String userId) {
@@ -37,7 +41,7 @@ public class GameSessionService {
             existingPlayer.get().setStatus(GameSessionPlayer.SessionPlayerStatus.ACCEPTED);
         } else {
             // User is joining the session (was not originally invited/matched)
-            com.squadsync.backend.model.User user = userRepository.findById(userId)
+            User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
             GameSessionPlayer newPlayer = new GameSessionPlayer();
@@ -48,7 +52,7 @@ public class GameSessionService {
         }
 
         sessionRepository.save(session);
-        eventPublisher.publishEvent(new com.squadsync.backend.event.GameSessionUpdatedEvent(this, session));
+        eventPublisher.publishEvent(new GameSessionUpdatedEvent(this, session));
     }
 
     @Transactional
@@ -87,7 +91,7 @@ public class GameSessionService {
         int minPlayers = Math.max(2, session.getGame().getMinPlayers());
         boolean enoughPlayers = acceptedPlayers >= minPlayers;
 
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
         boolean startsSoon = session.getStartTime().isBefore(now.plusHours(1));
 
         if (enoughPlayers && startsSoon) {

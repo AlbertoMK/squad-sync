@@ -1,12 +1,21 @@
 package com.squadsync.backend.service;
 
+import com.squadsync.backend.model.GameSession;
+import com.squadsync.backend.model.GameSessionPlayer;
+import jakarta.annotation.PostConstruct;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
+import java.awt.Color;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 public class DiscordBotService {
@@ -34,7 +43,7 @@ public class DiscordBotService {
         }
     }
 
-    public void sendMatchmakingUpdates(java.util.List<com.squadsync.backend.model.GameSession> sessions) {
+    public void sendMatchmakingUpdates(List<GameSession> sessions) {
         if (jda == null) {
             System.out.println("JDA is not initialized. Cannot send updates.");
             return;
@@ -51,8 +60,8 @@ public class DiscordBotService {
             return;
         }
 
-        for (com.squadsync.backend.model.GameSession session : sessions) {
-            net.dv8tion.jda.api.EmbedBuilder embed = new net.dv8tion.jda.api.EmbedBuilder();
+        for (GameSession session : sessions) {
+            EmbedBuilder embed = new EmbedBuilder();
 
             // Calculate status for display
             // We replicate basic logic here or usage helper.
@@ -64,35 +73,35 @@ public class DiscordBotService {
             // Re-implementing basic status check for display purposes:
             long acceptedPlayers = session.getPlayers().stream()
                     .filter(p -> p
-                            .getStatus() == com.squadsync.backend.model.GameSessionPlayer.SessionPlayerStatus.ACCEPTED)
+                            .getStatus() == GameSessionPlayer.SessionPlayerStatus.ACCEPTED)
                     .count();
             int minPlayers = Math.max(2, session.getGame().getMinPlayers());
             boolean enoughPlayers = acceptedPlayers >= minPlayers;
-            boolean startsSoon = session.getStartTime().isBefore(java.time.LocalDateTime.now().plusHours(1));
+            boolean startsSoon = session.getStartTime().isBefore(LocalDateTime.now().plusHours(1));
 
             boolean isConfirmed = enoughPlayers && startsSoon;
 
             // Color based on status
             if (isConfirmed) {
-                embed.setColor(java.awt.Color.GREEN);
+                embed.setColor(Color.GREEN);
                 embed.setTitle("✅ Sesión Confirmada: " + session.getGame().getTitle());
             } else {
-                embed.setColor(java.awt.Color.YELLOW);
+                embed.setColor(Color.YELLOW);
                 embed.setTitle("⚠️ Sesión Preliminar: " + session.getGame().getTitle());
             }
 
             // Description / Fields
-            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM HH:mm");
             embed.addField("Fecha de Inicio", session.getStartTime().format(formatter), true);
 
-            long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
+            long durationMinutes = Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
             embed.addField("Duración", durationMinutes + " minutos", true);
 
             int playerCount = session.getPlayers().size();
             embed.addField("Jugadores", String.valueOf(playerCount), true);
 
             embed.setFooter("ID: " + session.getId());
-            embed.setTimestamp(java.time.Instant.now());
+            embed.setTimestamp(Instant.now());
 
             String messageContent = "";
             if (isConfirmed) {
@@ -103,7 +112,7 @@ public class DiscordBotService {
         }
     }
 
-    public void sendPreliminarySessionNotifications(java.util.List<com.squadsync.backend.model.GameSession> sessions) {
+    public void sendPreliminarySessionNotifications(List<GameSession> sessions) {
         if (jda == null)
             return;
         if (sessions == null || sessions.isEmpty())
@@ -115,29 +124,29 @@ public class DiscordBotService {
             return;
         }
 
-        for (com.squadsync.backend.model.GameSession session : sessions) {
-            net.dv8tion.jda.api.EmbedBuilder embed = new net.dv8tion.jda.api.EmbedBuilder();
+        for (GameSession session : sessions) {
+            EmbedBuilder embed = new EmbedBuilder();
 
             // Orange for Preliminary
-            embed.setColor(java.awt.Color.ORANGE);
+            embed.setColor(Color.ORANGE);
             embed.setTitle("⚠️ Sesión Preliminar (Comienza pronto): " + session.getGame().getTitle());
 
             // Description / Fields
-            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM HH:mm");
             embed.addField("Fecha de Inicio", session.getStartTime().format(formatter), true);
 
-            long durationMinutes = java.time.Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
+            long durationMinutes = Duration.between(session.getStartTime(), session.getEndTime()).toMinutes();
             embed.addField("Duración", durationMinutes + " minutos", true);
 
             int playerCount = session.getPlayers().size();
             embed.addField("Jugadores actuales", String.valueOf(playerCount), true);
 
             embed.setFooter("ID: " + session.getId());
-            embed.setTimestamp(java.time.Instant.now());
+            embed.setTimestamp(Instant.now());
 
             // Build mentions string
             StringBuilder mentions = new StringBuilder();
-            for (com.squadsync.backend.model.GameSessionPlayer player : session.getPlayers()) {
+            for (GameSessionPlayer player : session.getPlayers()) {
                 String discordId = player.getUser().getDiscordId();
 
                 if (discordId != null && !discordId.isBlank()) {
