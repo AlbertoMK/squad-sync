@@ -10,8 +10,6 @@ import com.squadsync.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -93,7 +91,6 @@ public class AvailabilityService {
         AvailabilitySlotDto dto = new AvailabilitySlotDto();
         dto.setId(slot.getId());
         dto.setUserId(slot.getUser().getId());
-        // Convert LocalDateTime (Entity) to DTO directly
         dto.setStartTime(slot.getStartTime());
         dto.setEndTime(slot.getEndTime());
         if (slot.getGame() != null) {

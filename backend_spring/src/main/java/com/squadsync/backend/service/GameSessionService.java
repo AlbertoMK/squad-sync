@@ -22,6 +22,7 @@ public class GameSessionService {
     private final GameSessionRepository sessionRepository;
     private final AvailabilitySlotRepository availabilitySlotRepository;
     private final com.squadsync.backend.repository.UserRepository userRepository;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void acceptSession(String sessionId, String userId) {
@@ -47,6 +48,7 @@ public class GameSessionService {
         }
 
         sessionRepository.save(session);
+        eventPublisher.publishEvent(new com.squadsync.backend.event.GameSessionUpdatedEvent(this, session));
     }
 
     @Transactional
@@ -93,5 +95,14 @@ public class GameSessionService {
         }
 
         return GameSession.SessionStatus.PRELIMINARY;
+    }
+
+    @Transactional
+    public void markAsNotified(String sessionId) {
+        GameSession session = sessionRepository.findById(sessionId).orElse(null);
+        if (session != null) {
+            session.setNotified(true);
+            sessionRepository.save(session);
+        }
     }
 }

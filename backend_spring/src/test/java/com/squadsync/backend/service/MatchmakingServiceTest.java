@@ -12,8 +12,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import com.squadsync.backend.event.GameSessionUpdatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import org.mockito.ArgumentCaptor;
 import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -35,7 +40,7 @@ public class MatchmakingServiceTest {
     @Mock
     private GameSessionService gameSessionService;
     @Mock
-    private DiscordBotService discordBotService;
+    private ApplicationEventPublisher eventPublisher;
     @InjectMocks
     private MatchmakingService matchmakingService;
 
@@ -584,15 +589,21 @@ public class MatchmakingServiceTest {
         matchmakingService.runMatchmaking();
 
         // Verify
-        // Expected: sendMatchmakingUpdates called with 2 sessions (1 existing + 1 new)
-        org.mockito.ArgumentCaptor<List<GameSession>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
-        org.mockito.Mockito.verify(discordBotService).sendMatchmakingUpdates(captor.capture());
+        // Expected: publishEvent called for each confirmed session (and any saved
+        // session)
+        // In this test setup, matchmaker returns/saves sessions.
+        // We expect at least one event.
+        ArgumentCaptor<GameSessionUpdatedEvent> eventCaptor = ArgumentCaptor.forClass(GameSessionUpdatedEvent.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
 
-        List<GameSession> capturedSessions = captor.getValue();
+        List<GameSessionUpdatedEvent> events = eventCaptor.getAllValues();
+        Assertions.assertFalse(events.isEmpty(), "Should publish events");
 
-        Assertions.assertTrue(capturedSessions.size() >= 1, "Should notify about sessions");
-        Assertions.assertTrue(capturedSessions.contains(existingConfirmed),
-                "Should include existing confirmed session");
+        // Check that at least one event corresponds to a confirmed session from our
+        // list
+        boolean foundExisting = events.stream()
+                .anyMatch(e -> e.getSession().getId().equals(existingConfirmed.getId()));
+        Assertions.assertTrue(foundExisting, "Should publish event for existing confirmed session");
     }
 
     @Test
@@ -630,17 +641,17 @@ public class MatchmakingServiceTest {
         matchmakingService.checkUpcomingPreliminarySessions();
 
         // Verify
-        org.mockito.ArgumentCaptor<List<GameSession>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
-        org.mockito.Mockito.verify(discordBotService, org.mockito.Mockito.atLeastOnce())
-                .sendPreliminarySessionNotifications(captor.capture());
+        ArgumentCaptor<GameSessionUpdatedEvent> eventCaptor = ArgumentCaptor.forClass(GameSessionUpdatedEvent.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
 
-        List<GameSession> notifiedSessions = captor.getValue();
-        Assertions.assertEquals(1, notifiedSessions.size(), "Should verify exactly 1 session");
-        Assertions.assertTrue(notifiedSessions.contains(s1), "Should notify session starting in 1h");
-        Assertions.assertFalse(notifiedSessions.contains(s2), "Should NOT notify session starting in 1 week");
-
-        // Check s1 setNotified(true)
-        Assertions.assertTrue(s1.isNotified(), "Session should be marked as notified");
+        List<GameSessionUpdatedEvent> events = eventCaptor.getAllValues();
+        // Since logic in service is just "loop and publish", we expect events for BOTH
+        // s1 and s2
+        // The listener handles filtering.
+        Assertions.assertTrue(events.stream().anyMatch(e -> e.getSession().getId().equals("s1")),
+                "Should publish event for s1");
+        Assertions.assertTrue(events.stream().anyMatch(e -> e.getSession().getId().equals("s2")),
+                "Should publish event for s2");
     }
 
     @Test
@@ -662,16 +673,12 @@ public class MatchmakingServiceTest {
         matchmakingService.checkUpcomingPreliminarySessions();
 
         // Then
-        org.mockito.ArgumentCaptor<List<GameSession>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
-        // We verify that it IS called. With the bug, this verification may fail if
-        // using regular verify
-        // or if we assert on captured values.
-        org.mockito.Mockito.verify(discordBotService, org.mockito.Mockito.atLeastOnce())
-                .sendPreliminarySessionNotifications(captor.capture());
+        // Then
+        ArgumentCaptor<GameSessionUpdatedEvent> eventCaptor = ArgumentCaptor.forClass(GameSessionUpdatedEvent.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(eventCaptor.capture());
 
-        List<GameSession> captured = captor.getValue();
-        // The bug prevents it from being added to the list if check is strictly > now
-        Assertions.assertTrue(captured.stream().anyMatch(s -> s.getId().equals("session-now")),
-                "Should notify for session starting now");
+        List<GameSessionUpdatedEvent> events = eventCaptor.getAllValues();
+        Assertions.assertTrue(events.stream().anyMatch(e -> e.getSession().getId().equals("session-now")),
+                "Should publish event for session starting now");
     }
 }

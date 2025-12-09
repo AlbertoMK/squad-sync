@@ -25,7 +25,8 @@ public class MatchmakingService {
     private final GameSessionRepository sessionRepository;
 
     private final GameSessionService gameSessionService;
-    private final DiscordBotService discordBotService;
+    // private final DiscordBotService discordBotService; // Decoupled via Events
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     private static final int MIN_PLAYERS_FOR_SESSION = 2;
     private static final int MAX_SESSION_DURATION_MINUTES = 240;
@@ -187,26 +188,17 @@ public class MatchmakingService {
         log.info("Selected {} sessions", selectedSessions.size());
         List<GameSession> savedSessions = sessionRepository.saveAll(selectedSessions);
 
-        // Notify Discord about confirmed sessions
-        List<GameSession> allConfirmedSessions = new ArrayList<>(confirmedSessions);
-        for (GameSession session : savedSessions) {
-            if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.CONFIRMED) {
-                allConfirmedSessions.add(session);
-            }
-        }
+        // Notify Discord via Events
+        // We want to trigger checks for:
+        // 1. Existing Confirmed Sessions (to report them again, if desired, or at least
+        // consistent with legacy 'allConfirmed' logic - test expects this)
+        // 2. Newly Saved Sessions (Confirmed or Preliminary)
 
-        if (!allConfirmedSessions.isEmpty()) {
-            try {
-                discordBotService.sendMatchmakingUpdates(allConfirmedSessions);
-            } catch (Exception e) {
-                log.error("Failed to send Discord updates", e);
-            }
-        }
+        List<GameSession> allSessionsToNotify = new ArrayList<>();
+        allSessionsToNotify.addAll(confirmedSessions);
+        allSessionsToNotify.addAll(savedSessions);
 
-        // Notify Discord about PRELIMINARY sessions starting soon (< 2h)
-        List<GameSession> allProcessedSessions = new ArrayList<>(savedSessions);
-
-        checkAndNotifyPreliminary(allProcessedSessions);
+        checkAndNotifyPreliminary(allSessionsToNotify);
 
         // Result construction
         List<GameSessionDto> result = new ArrayList<>();
@@ -220,31 +212,10 @@ public class MatchmakingService {
     }
 
     private void checkAndNotifyPreliminary(List<GameSession> sessions) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime twoHoursLater = now.plusHours(2);
-        List<GameSession> toNotify = new ArrayList<>();
-
+        // Just trigger event for each session, allowing Listener to handle notification
+        // logic
         for (GameSession session : sessions) {
-            if (gameSessionService.getSessionStatus(session) == GameSession.SessionStatus.PRELIMINARY) {
-                if (!session.isNotified()) {
-                    if (session.getStartTime().isBefore(twoHoursLater) && session.getEndTime().isAfter(now)) {
-                        toNotify.add(session);
-                    }
-                }
-            }
-        }
-
-        if (!toNotify.isEmpty()) {
-            try {
-                discordBotService.sendPreliminarySessionNotifications(toNotify);
-                // Mark as notified
-                for (GameSession s : toNotify) {
-                    s.setNotified(true);
-                }
-                sessionRepository.saveAll(toNotify);
-            } catch (Exception e) {
-                log.error("Failed to send Preliminary notifications", e);
-            }
+            eventPublisher.publishEvent(new com.squadsync.backend.event.GameSessionUpdatedEvent(this, session));
         }
     }
 
