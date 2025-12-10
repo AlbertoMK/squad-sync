@@ -382,11 +382,6 @@ public class MatchmakingService {
             LocalDateTime chunkStart = slot.startTime;
             while (chunkStart.isBefore(slot.endTime)) {
 
-                // If remaining time is small enough for one chunk (<= MAX, currently 240)
-                // AND logic for "remainder vs split" ?
-                // Actually we just iterate carving out 2h chunks unless remainder logic
-                // applies.
-
                 long remaining = Duration.between(chunkStart, slot.endTime).toMinutes();
 
                 // Base target: 2 hours (120 min)
@@ -628,12 +623,6 @@ public class MatchmakingService {
     }
 
     public List<GameSession> findSessionsForUser(String userId) {
-        // We need to fetch all active sessions and filter in memory or add a repository
-        // method
-        // For efficiency, let's add a repository method or just filter active sessions
-        // here
-        // Since we don't have a direct query for "sessions by user" yet, let's filter
-        // active sessions
         LocalDateTime now = LocalDateTime.now();
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
 
@@ -652,13 +641,6 @@ public class MatchmakingService {
 
         if (removed) {
             log.info("Removed user {} from session {} due to availability deletion", userId, sessionId);
-            // If session has too few players, we might want to delete it or let dynamic
-            // status handle it
-            // Dynamic status will mark it as PRELIMINARY if < min players.
-            // But if it has 0 or 1 player, maybe we should just keep it as is,
-            // and let the next matchmaking run clean it up or fill it?
-            // Actually, if we remove a player, the session might become invalid.
-            // Let's save it.
             sessionRepository.save(session);
         }
     }

@@ -26,6 +26,9 @@ public class DiscordBotService {
     @Value("${discord.bot.channel-id}")
     private String defaultChannelId;
 
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
     private JDA jda;
 
     @PostConstruct
@@ -100,7 +103,7 @@ public class DiscordBotService {
             int playerCount = session.getPlayers().size();
             embed.addField("Jugadores", String.valueOf(playerCount), true);
 
-            embed.setFooter("ID: " + session.getId());
+            embed.setDescription("Acepta la sesión **[aquí](" + frontendUrl + ")**");
             embed.setTimestamp(Instant.now());
 
             String messageContent = "";
@@ -141,7 +144,7 @@ public class DiscordBotService {
             int playerCount = session.getPlayers().size();
             embed.addField("Jugadores actuales", String.valueOf(playerCount), true);
 
-            embed.setFooter("ID: " + session.getId());
+            embed.setDescription("Acepta la sesión **[aquí](" + frontendUrl + ")**");
             embed.setTimestamp(Instant.now());
 
             // Build mentions string
