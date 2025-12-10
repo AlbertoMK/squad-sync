@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -546,8 +547,7 @@ public class MatchmakingService {
     public List<GameSessionDto> getUpcomingSessions() {
         return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime.now())
                 .stream()
-                .filter(session -> session.getEndTime().isAfter(LocalDateTime.now())) // Robust check against timezone
-                                                                                      // mismatch
+                .filter(session -> session.getEndTime().isAfter(LocalDateTime.now()))
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -556,9 +556,10 @@ public class MatchmakingService {
         GameSessionDto dto = new GameSessionDto();
         dto.setId(session.getId());
         dto.setGameId(session.getGame().getId());
-        // Convert Entity (LocalDateTime) to DTO (Instant) using UTC
-        dto.setStartTime(session.getStartTime().toInstant(ZoneOffset.UTC));
-        dto.setEndTime(session.getEndTime().toInstant(ZoneOffset.UTC));
+        // Convert Entity (LocalDateTime) to DTO (Instant) using System Default Zone
+        // (Configured globally)
+        dto.setStartTime(session.getStartTime().atZone(ZoneId.systemDefault()).toInstant());
+        dto.setEndTime(session.getEndTime().atZone(ZoneId.systemDefault()).toInstant());
         dto.setSessionScore(session.getSessionScore());
         dto.setCreatedAt(session.getCreatedAt());
 
