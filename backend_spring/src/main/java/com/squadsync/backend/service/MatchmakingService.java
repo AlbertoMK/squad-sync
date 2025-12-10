@@ -546,6 +546,8 @@ public class MatchmakingService {
     public List<GameSessionDto> getUpcomingSessions() {
         return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime.now())
                 .stream()
+                .filter(session -> session.getEndTime().isAfter(LocalDateTime.now())) // Robust check against timezone
+                                                                                      // mismatch
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
