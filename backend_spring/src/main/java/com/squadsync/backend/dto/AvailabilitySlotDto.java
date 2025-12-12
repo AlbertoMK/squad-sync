@@ -8,8 +8,8 @@ import java.util.List;
 public class AvailabilitySlotDto {
     private String id;
     private String userId;
-    private java.time.LocalDateTime startTime;
-    private java.time.LocalDateTime endTime;
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
     private String gameId;
     private List<PreferenceDto> preferences;
 }

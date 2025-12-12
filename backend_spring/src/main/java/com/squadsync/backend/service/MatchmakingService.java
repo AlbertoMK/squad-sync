@@ -23,9 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-
-import org.springframework.beans.factory.annotation.Value;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,9 +44,6 @@ public class MatchmakingService {
     private final GameRepository gameRepository;
     private final UserGamePreferenceRepository preferenceRepository;
     private final GameSessionRepository sessionRepository;
-
-    @Value("${app.timezone:Europe/Madrid}")
-    private String appTimezone;
 
     private final GameSessionService gameSessionService;
     private final ApplicationEventPublisher eventPublisher;
@@ -552,11 +546,7 @@ public class MatchmakingService {
     public List<GameSessionDto> getUpcomingSessions() {
         return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime.now())
                 .stream()
-                .filter(session -> {
-                    // Interpret stored time as being in appTimezone, then compare to instant "now"
-                    return session.getEndTime().atZone(ZoneId.of(appTimezone))
-                            .toInstant().isAfter(java.time.Instant.now());
-                })
+                .filter(session -> session.getEndTime().isAfter(LocalDateTime.now()))
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -565,11 +555,9 @@ public class MatchmakingService {
         GameSessionDto dto = new GameSessionDto();
         dto.setId(session.getId());
         dto.setGameId(session.getGame().getId());
-        // Convert Entity (LocalDateTime) to DTO (Instant) using Configured Timezone
-        // explicitly
-        ZoneId zoneId = ZoneId.of(appTimezone);
-        dto.setStartTime(session.getStartTime().atZone(zoneId).toInstant());
-        dto.setEndTime(session.getEndTime().atZone(zoneId).toInstant());
+        // Direct mapping of LocalDateTime (DB value) to DTO
+        dto.setStartTime(session.getStartTime());
+        dto.setEndTime(session.getEndTime());
         dto.setSessionScore(session.getSessionScore());
         dto.setCreatedAt(session.getCreatedAt());
 

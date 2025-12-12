@@ -1,7 +1,7 @@
 package com.squadsync.backend.dto;
 
 import lombok.Data;
-import java.time.Instant;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -10,8 +10,8 @@ public class GameSessionDto {
     private String id;
     private String gameId;
     private GameDto game;
-    private Instant startTime;
-    private Instant endTime;
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
     private List<String> playerIds;
     private List<GameSessionPlayerDto> players; // Expanded player details with status
     private double sessionScore;
