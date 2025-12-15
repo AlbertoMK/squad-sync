@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.time.LocalDateTime;
+import com.squadsync.backend.util.DateUtils;
 
 @Entity
 @Table(name = "availability_slots")
@@ -34,5 +35,5 @@ public class AvailabilitySlot {
     @OneToMany(mappedBy = "availabilitySlot", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<AvailabilityGamePreference> preferences = new java.util.ArrayList<>();
 
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = DateUtils.now();
 }

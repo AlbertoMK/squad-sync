@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+import com.squadsync.backend.util.DateUtils;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -58,7 +60,7 @@ public class MatchmakingService {
     public List<GameSessionDto> runMatchmaking() {
         log.info("Running matchmaking algorithm...");
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DateUtils.now();
 
         // 1. Fetch and categorize sessions
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
@@ -256,7 +258,7 @@ public class MatchmakingService {
     @Scheduled(cron = "0 1,31 * * * *")
     public void checkUpcomingPreliminarySessions() {
         log.info("Running scheduled check for upcoming preliminary sessions...");
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DateUtils.now();
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
 
         checkAndNotifyPreliminary(activeSessions);
@@ -522,8 +524,8 @@ public class MatchmakingService {
 
         // Clamp start time to now if the slot started in the past
         LocalDateTime sessionStartTime = timeSlot.startTime;
-        if (sessionStartTime.isBefore(LocalDateTime.now())) {
-            sessionStartTime = LocalDateTime.now();
+        if (sessionStartTime.isBefore(DateUtils.now())) {
+            sessionStartTime = DateUtils.now();
         }
         // Truncate to seconds for DB hygiene
         session.setStartTime(sessionStartTime.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
@@ -544,9 +546,9 @@ public class MatchmakingService {
     }
 
     public List<GameSessionDto> getUpcomingSessions() {
-        return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(LocalDateTime.now())
+        return sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(DateUtils.now())
                 .stream()
-                .filter(session -> session.getEndTime().isAfter(LocalDateTime.now()))
+                .filter(session -> session.getEndTime().isAfter(DateUtils.now()))
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -624,7 +626,7 @@ public class MatchmakingService {
     }
 
     public List<GameSession> findSessionsForUser(String userId) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = DateUtils.now();
         List<GameSession> activeSessions = sessionRepository.findByEndTimeGreaterThanOrderByStartTimeAsc(now);
 
         return activeSessions.stream()
